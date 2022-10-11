@@ -7,7 +7,6 @@ use panic_halt as _;
 use stm32f4xx_hal as hal;
 use hal::{prelude::*, pac};
 
-
 #[entry]
 fn main() -> ! {
     let cp = cortex_m::Peripherals::take().unwrap();

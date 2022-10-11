@@ -12,6 +12,10 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 rustup target add thumbv6m-none-eabi thumbv7m-none-eabi thumbv7em-none-eabi thumbv7em-none-eabihf
 ```
 
+**[Cargo-flash](https://github.com/probe-rs/cargo-flash)**
+```
+cargo install cargo-flash
+```
 ## Build
 **Unoptimized**
 ```
@@ -20,4 +24,9 @@ cargo build
 **Optimized**
 ```
 cargo build --release
+```
+
+## Flash on target
+```
+cargo flash --chip STM32F429ZITx [--release]
 ```
