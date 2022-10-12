@@ -1,4 +1,4 @@
-name: Build
+name: CI
 
 on: [push, pull_request]
 
@@ -6,17 +6,29 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain : stable
+        components: rustfmt
+    - uses: actions-rs/cargo@v1
+      with: 
+        command: fmt
+        args: --all -- --check
+  
   build:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
     - uses: actions-rs/toolchain@v1
       with:
-        profile: minimal
         toolchain: stable
         target: thumbv7em-none-eabihf
         override: true
     - name: Release
-      run: cargo build --verbose --release
+      run: cargo build --release --verbose
     - name: Debug
       run: cargo build --verbose
