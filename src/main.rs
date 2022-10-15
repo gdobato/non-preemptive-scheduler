@@ -2,7 +2,7 @@
 #![no_main]
 
 use cortex_m::asm;
-use cortex_m_rt::{entry, exception};
+use cortex_m_rt::{entry, exception, ExceptionFrame};
 use hal::{pac, prelude::*};
 use panic_halt as _;
 use rtt_target::{rprintln as log, rtt_init_print as log_init};
@@ -28,6 +28,7 @@ fn main() -> ! {
         .pclk2(90.MHz())
         .freeze();
 
+    #[cfg(debug_assertions)]
     systick.enable_interrupt();
     let mut delay = systick.delay(&clks);
 
@@ -45,4 +46,12 @@ fn main() -> ! {
 #[exception]
 fn SysTick() {
     asm::nop();
+}
+
+#[exception]
+unsafe fn HardFault(ef: &ExceptionFrame) -> ! {
+    log!("{:#?}", ef);
+    loop {
+        asm::nop();
+    }
 }
