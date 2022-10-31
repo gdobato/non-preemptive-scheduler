@@ -1,6 +1,6 @@
 # Hello-rust
 
-Small project based on [cortex-m-quickstart template](https://github.com/rust-embedded/cortex-m-quickstart) to run Rust on a Cortex-M4F target (STM32F429I-DISC1 board)
+Small project which makes use of [rust-embedded-wg](https://github.com/rust-embedded/wg) crates and references to run Rust on a Cortex-M4F target (STM32F429I-DISC1 board)
 
 ## Installation (Unix-like OS)
 Toolchain
@@ -12,32 +12,42 @@ Suport for ARM-CM targets
 rustup target add thumbv6m-none-eabi thumbv7m-none-eabi thumbv7em-none-eabi thumbv7em-none-eabihf
 ```
 
-[Cargo-flash](https://github.com/probe-rs/cargo-flash)
+[Cargo-embed](https://github.com/probe-rs/cargo-embed)
 ```
-cargo install cargo-flash
-```
-
-[Cargo-runner](https://github.com/knurling-rs/probe-run)
-```
-cargo install probe-run
+cargo install cargo-embed
 ```
 
 ## Build
-Unoptimized
-```
-cargo build
-```
-Optimized
-```
-cargo build --release
-```
 
+```
+cargo build [--release] --example <example_name>
+```
+e.g :
+```
+cargo build --example usb_dev_cdc
+```
 ## Flash on target
 ```
-cargo flash --chip STM32F429ZITx [--release]
+cargo embed [--release] --example <example_name>
+```
+e.g :
+```
+cargo embed --example usb_dev_cdc
 ```
 
-## Launch runner
+## Attach to target
+
+Disable flash in Embed.toml of root directory
+
 ```
-cargo run [--release]
+[default.flashing]
+enabled = false
+```
+Run cargo embed
+```
+cargo embed [--release] --example <example_name>
+```
+e.g :
+```
+cargo embed --example usb_dev_cdc
 ```

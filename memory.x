@@ -1,7 +1,6 @@
 
 /* 
- * Linker script for STM32F429I
- * Just to bring up the thing, it needs to be adjusted ;) 
+ * Linker script extension for STM32F429I
  */
 
 MEMORY
