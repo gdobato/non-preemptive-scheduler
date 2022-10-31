@@ -28,7 +28,14 @@ jobs:
         toolchain: stable
         target: thumbv7em-none-eabihf
         override: true
+    - name: Prologue
+      run: cargo update
     - name: Release
-      run: cargo build --release --verbose
+      run: | 
+        cargo build --release --verbose
+        cargo build --examples --release --verbose
     - name: Debug
-      run: cargo build --verbose
+      run: | 
+        cargo build --verbose
+        cargo build --examples --verbose
+        

@@ -1,3 +1,6 @@
+//! Example
+//! Simple LED blinky which makes uses of existing rust-embedded crates
+
 #![no_std]
 #![no_main]
 
@@ -28,6 +31,7 @@ fn main() -> ! {
         .pclk2(90.MHz())
         .freeze();
 
+    // Get Systick as delay source
     #[cfg(debug_assertions)]
     systick.enable_interrupt();
     let mut delay = systick.delay(&clks);
@@ -45,7 +49,7 @@ fn main() -> ! {
 
 #[exception]
 fn SysTick() {
-    asm::nop();
+    asm::nop(); // Debug purposes
 }
 
 #[exception]
