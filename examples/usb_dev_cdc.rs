@@ -114,7 +114,7 @@ fn main() -> ! {
     // Initialize USB stack
     const USB_BUS_BUFFER_SIZE: usize = 512;
     let usb_bus_buffer: &'static mut [u32; USB_BUS_BUFFER_SIZE] =
-        singleton!(USB_BUFFER: [u32; USB_BUS_BUFFER_SIZE] = [0u32; 512]).unwrap();
+        singleton!(USB_BUFFER: [u32; USB_BUS_BUFFER_SIZE] = [0u32; USB_BUS_BUFFER_SIZE]).unwrap();
     let usb_bus = UsbBus::new(usb, usb_bus_buffer);
     let mut usb_serial_port = usbd_serial::SerialPort::new(&usb_bus);
     let mut usb_dev = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x1234, 0x1234))
@@ -136,7 +136,7 @@ fn main() -> ! {
         || led_enumeration.borrow_mut().set_low(),  // Switch LED off upon enumeration lost
     );
 
-    // Super loop for polling usb event
+    // Super loop for polling usb events
     loop {
         usb_app_dev_handler.update(usb_dev.state());
 
