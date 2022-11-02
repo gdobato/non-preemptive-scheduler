@@ -19,7 +19,6 @@ fn main() -> ! {
     let cp = cortex_m::Peripherals::take().unwrap();
     let dp = pac::Peripherals::take().unwrap();
 
-    let mut systick = cp.SYST;
     let rcc = dp.RCC.constrain();
 
     let clks = rcc
@@ -32,8 +31,9 @@ fn main() -> ! {
         .freeze();
 
     // Get Systick as delay source
-    #[cfg(debug_assertions)]
-    systick.enable_interrupt();
+    let mut systick = cp.SYST;
+    systick.enable_interrupt(); // Debug purposes
+
     let mut delay = systick.delay(&clks);
 
     let gpio_g = dp.GPIOG.split();
@@ -49,7 +49,7 @@ fn main() -> ! {
 
 #[exception]
 fn SysTick() {
-    asm::nop(); // Debug purposes
+    asm::nop();
 }
 
 #[exception]
