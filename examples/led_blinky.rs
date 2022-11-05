@@ -4,52 +4,131 @@
 #![no_std]
 #![no_main]
 
-use cortex_m::asm;
+use core::cell::RefCell;
+use cortex_m::{
+    asm,
+    interrupt::{self, Mutex},
+    peripheral::syst::SystClkSource,
+};
 use cortex_m_rt::{entry, exception, ExceptionFrame};
-use hal::{pac, prelude::*};
+use hal::{
+    gpio::{
+        gpiog::{PG13, PG14},
+        Output, PushPull,
+    },
+    pac,
+    prelude::*,
+};
+use hello_rust::scheduler::{Scheduler, Task};
 use panic_halt as _;
 use rtt_target::{rprintln as log, rtt_init_print as log_init};
 use stm32f4xx_hal as hal;
 
-#[entry]
-fn main() -> ! {
-    log_init!();
-    log!("Init Target...");
+const SCHEDULER_TASK_COUNT: usize = 3;
+// Static and interior mutable entities
+static LED_GREEN: Mutex<RefCell<Option<PG13<Output<PushPull>>>>> = Mutex::new(RefCell::new(None));
+static LED_RED: Mutex<RefCell<Option<PG14<Output<PushPull>>>>> = Mutex::new(RefCell::new(None));
+// Unsafe static mutable counter, shared between systick isr handler and normal execution level
+static mut SCHEDULER_COUNTER: u32 = 0;
 
+fn time_monitor() -> u32 {
+    interrupt::free(|_| unsafe { SCHEDULER_COUNTER })
+}
+
+fn red_led_blinky_process() {
+    interrupt::free(|cs| {
+        if let Some(led_red) = LED_RED.borrow(cs).borrow_mut().as_mut() {
+            led_red.toggle();
+        }
+    })
+}
+
+fn green_led_blinky_process() {
+    interrupt::free(|cs| {
+        if let Some(led_green) = LED_GREEN.borrow(cs).borrow_mut().as_mut() {
+            led_green.toggle();
+        }
+    })
+}
+
+fn bsp_init() {
     let cp = cortex_m::Peripherals::take().unwrap();
     let dp = pac::Peripherals::take().unwrap();
 
-    let rcc = dp.RCC.constrain();
-
-    let clks = rcc
-        .cfgr // Max values considering HSE source (8 MHz)
+    dp.RCC
+        .constrain()
+        .cfgr
         .use_hse(8.MHz())
-        .hclk(180.MHz())
         .sysclk(180.MHz())
-        .pclk1(45.MHz())
-        .pclk2(90.MHz())
         .freeze();
 
-    // Get Systick as delay source
     let mut systick = cp.SYST;
-    systick.enable_interrupt(); // Debug purposes
-
-    let mut delay = systick.delay(&clks);
+    systick.set_clock_source(SystClkSource::Core);
+    systick.set_reload(180_000); // 1ms tick. TODO: Use time based literals
+    systick.enable_counter();
+    systick.enable_interrupt();
 
     let gpio_g = dp.GPIOG.split();
-    let mut led_red = gpio_g.pg14.into_push_pull_output();
 
-    loop {
-        #[cfg(debug_assertions)]
-        log!("Toggling led...");
-        led_red.toggle();
-        delay.delay_ms(250_u8);
-    }
+    interrupt::free(|cs| {
+        LED_GREEN
+            .borrow(cs)
+            .replace(Some(gpio_g.pg13.into_push_pull_output()));
+        LED_RED
+            .borrow(cs)
+            .replace(Some(gpio_g.pg14.into_push_pull_output()));
+    });
+}
+
+#[entry]
+fn main() -> ! {
+    log_init!();
+
+    bsp_init();
+
+    let mut scheduler = Scheduler::<SCHEDULER_TASK_COUNT, _>::new(&time_monitor);
+
+    scheduler.add_task(Task::new(
+        "green_led_blinky",
+        None,
+        Some(green_led_blinky_process),
+        500,
+        0,
+    ));
+
+    scheduler.add_task(Task::new(
+        "red_led_blinky",
+        None,
+        Some(red_led_blinky_process),
+        500,
+        500,
+    ));
+
+    scheduler.add_task(Task::new(
+        "alive_counter",
+        None,
+        Some(|| {
+            static mut ALIVE_COUNTER: u32 = 0;
+            log!("Alive counter: {:?}", unsafe { ALIVE_COUNTER });
+            unsafe { ALIVE_COUNTER += 1 };
+        }),
+        1000,
+        0,
+    ));
+
+    scheduler.register_idle_task(|| asm::nop()); // Bkpt placeholder
+
+    scheduler.launch();
+
+    loop {}
 }
 
 #[exception]
 fn SysTick() {
-    asm::nop();
+    unsafe {
+        // Temporary to bring up the stuff
+        SCHEDULER_COUNTER += 1;
+    }
 }
 
 #[exception]
