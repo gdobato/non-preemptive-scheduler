@@ -6,9 +6,11 @@ use heapless::Vec;
 use panic_halt as _;
 use rtt_target::rprintln as log;
 
-type Name = &'static str;
-type Init = fn();
-type Process = fn();
+type InitRunnable = fn();
+type ProcessRunnable = fn();
+type TimeMonitor = fn() -> u32;
+type TaskName = &'static str;
+type TaskList<const N: usize> = Vec<Task, N>;
 
 #[derive(Debug)]
 struct TaskCtrlBlock {
@@ -18,9 +20,9 @@ struct TaskCtrlBlock {
 
 #[derive(Debug)]
 pub struct Task {
-    name: Name,
-    init: Option<Init>,
-    process: Option<Process>,
+    name: TaskName,
+    init_runnable: Option<InitRunnable>,
+    process_runnable: Option<ProcessRunnable>,
     execution_cycle: u32,
     execution_offset: u32,
     tcb: TaskCtrlBlock,
@@ -28,16 +30,16 @@ pub struct Task {
 
 impl Task {
     pub fn new(
-        name: Name,
-        init: Option<Init>,
-        process: Option<Process>,
+        name: TaskName,
+        init_runnable: Option<InitRunnable>,
+        process_runnable: Option<ProcessRunnable>,
         execution_cycle: u32,
         execution_offset: u32,
     ) -> Task {
         Task {
             name,
-            init,
-            process,
+            init_runnable,
+            process_runnable,
             execution_cycle,
             execution_offset,
             tcb: TaskCtrlBlock {
@@ -48,16 +50,16 @@ impl Task {
     }
 }
 
-pub struct Scheduler<const N: usize, F: FnMut() -> u32> {
-    timer: F,
+pub struct Scheduler<const N: usize> {
+    time_monitor: TimeMonitor,
     idle_task: Option<fn()>,
-    task_list: Vec<Task, N>,
+    task_list: TaskList<N>,
 }
 
-impl<const N: usize, F: FnMut() -> u32> Scheduler<N, F> {
-    pub fn new(timer: F) -> Scheduler<N, F> {
+impl<const N: usize> Scheduler<N> {
+    pub fn new(time_monitor: TimeMonitor) -> Scheduler<N> {
         Scheduler {
-            timer,
+            time_monitor,
             idle_task: None,
             task_list: Vec::<Task, N>::new(),
         }
@@ -71,27 +73,27 @@ impl<const N: usize, F: FnMut() -> u32> Scheduler<N, F> {
         for task in self.task_list.iter_mut() {
             log!("Launching task {}", task.name);
 
-            // Execute init if any
-            if let Some(init) = task.init {
-                init();
+            // Execute init_runnable if any
+            if let Some(init_runnable) = task.init_runnable {
+                init_runnable();
             }
 
-            // Update cycle monitor if any process function
-            if task.process.is_some() {
+            // Update cycle monitor if any process_runnable function
+            if task.process_runnable.is_some() {
                 task.tcb.cycle_monitor =
-                    (self.timer)() + task.execution_cycle + task.execution_offset;
+                    (self.time_monitor)() + task.execution_cycle + task.execution_offset;
             }
         }
 
         // Main endless super loop
         loop {
             for task in self.task_list.iter_mut() {
-                if let Some(process) = task.process {
+                if let Some(process_runnable) = task.process_runnable {
                     // Check for alarms
-                    if (self.timer)() >= task.tcb.cycle_monitor {
-                        process();
+                    if (self.time_monitor)() >= task.tcb.cycle_monitor {
+                        process_runnable();
                         // Update cycle monitor with new absolut time
-                        task.tcb.cycle_monitor = (self.timer)() + task.execution_cycle;
+                        task.tcb.cycle_monitor = (self.time_monitor)() + task.execution_cycle;
                     }
                     // TODO: Check for events
                 }
@@ -107,13 +109,13 @@ impl<const N: usize, F: FnMut() -> u32> Scheduler<N, F> {
     }
 
     pub fn _set_event(&mut self, name: &str, event: u32) {
-        if let Some(task) = self.task_list.iter_mut().find(|x| x.name == name) {
+        if let Some(task) = self.task_list.iter_mut().find(|task| task.name == name) {
             task.tcb.event_monitor |= event;
         }
     }
 
     pub fn _get_event(&mut self, name: &str) -> Option<u32> {
-        if let Some(task) = self.task_list.iter_mut().find(|x| x.name == name) {
+        if let Some(task) = self.task_list.iter_mut().find(|task| task.name == name) {
             Some(task.tcb.event_monitor)
         } else {
             None

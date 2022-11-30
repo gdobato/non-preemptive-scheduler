@@ -86,7 +86,7 @@ fn main() -> ! {
 
     bsp_init();
 
-    let mut scheduler = Scheduler::<SCHEDULER_TASK_COUNT, _>::new(&time_monitor);
+    let mut scheduler = Scheduler::<SCHEDULER_TASK_COUNT>::new(time_monitor);
 
     scheduler.add_task(Task::new(
         "green_led_blinky",
