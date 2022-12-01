@@ -8,6 +8,7 @@ use rtt_target::rprintln as log;
 
 type InitRunnable = fn();
 type ProcessRunnable = fn();
+type IdleRunnable = fn();
 type TimeMonitor = fn() -> u32;
 type TaskName = &'static str;
 type TaskList<const N: usize> = Vec<Task, N>;
@@ -52,7 +53,7 @@ impl Task {
 
 pub struct Scheduler<const N: usize> {
     time_monitor: TimeMonitor,
-    idle_task: Option<fn()>,
+    idle_runnable: Option<IdleRunnable>,
     task_list: TaskList<N>,
 }
 
@@ -60,7 +61,7 @@ impl<const N: usize> Scheduler<N> {
     pub fn new(time_monitor: TimeMonitor) -> Scheduler<N> {
         Scheduler {
             time_monitor,
-            idle_task: None,
+            idle_runnable: None,
             task_list: Vec::<Task, N>::new(),
         }
     }
@@ -89,7 +90,7 @@ impl<const N: usize> Scheduler<N> {
         loop {
             for task in self.task_list.iter_mut() {
                 if let Some(process_runnable) = task.process_runnable {
-                    // Check for alarms
+                    // Execute process runnable if cycle period elapsed
                     if (self.time_monitor)() >= task.tcb.cycle_monitor {
                         process_runnable();
                         // Update cycle monitor with new absolut time
@@ -99,13 +100,13 @@ impl<const N: usize> Scheduler<N> {
                 }
             }
 
-            // Execute idle task if registered
-            self.idle_task.unwrap_or(|| {});
+            // Execute idle runnable if registered
+            self.idle_runnable.unwrap_or(|| {});
         }
     }
 
-    pub fn register_idle_task(&mut self, idle: fn()) {
-        self.idle_task = Some(idle);
+    pub fn register_idle_runnable(&mut self, idle: fn()) {
+        self.idle_runnable = Some(idle);
     }
 
     pub fn _set_event(&mut self, name: &str, event: u32) {

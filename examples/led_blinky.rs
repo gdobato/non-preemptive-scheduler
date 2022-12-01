@@ -116,7 +116,7 @@ fn main() -> ! {
         0,
     ));
 
-    scheduler.register_idle_task(|| asm::nop()); // Bkpt placeholder
+    scheduler.register_idle_runnable(|| asm::nop()); // Bkpt placeholder
 
     scheduler.launch();
 
