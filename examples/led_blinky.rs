@@ -1,10 +1,10 @@
 //! Example
-//! Simple LED blinky which makes uses of existing rust-embedded crates
-
+//! Simple LED Blinky implementation which makes use of rust-embedded crates
+//! and non_preemptive scheduler to blink a couple of leds on a STM32F429I-DISC1 board
 #![no_std]
 #![no_main]
 
-use core::cell::RefCell;
+use core::cell::{Cell, RefCell};
 use cortex_m::{
     asm,
     interrupt::{self, Mutex},
@@ -19,36 +19,60 @@ use hal::{
     pac,
     prelude::*,
 };
-use hello_rust::scheduler::{Scheduler, Task};
+
 use panic_halt as _;
 use rtt_target::{rprintln as log, rtt_init_print as log_init};
+use scheduler::non_preemptive::{EventMask, Scheduler, Task};
 use stm32f4xx_hal as hal;
 
+// Constants
 const SCHEDULER_TASK_COUNT: usize = 3;
+const EVENT_TOGGLE_RED_LED: EventMask = 0x00000001;
 // Static and interior mutable entities
 static LED_GREEN: Mutex<RefCell<Option<PG13<Output<PushPull>>>>> = Mutex::new(RefCell::new(None));
 static LED_RED: Mutex<RefCell<Option<PG14<Output<PushPull>>>>> = Mutex::new(RefCell::new(None));
-// Unsafe static mutable counter, shared between systick isr handler and normal execution level
-static mut SCHEDULER_COUNTER: u32 = 0;
+static TIME_COUNTER: Mutex<Cell<u32>> = Mutex::new(Cell::new(0));
+// Static mutable entities
+static mut RED_LED_BLINKY_TASK: Option<Task> = None;
 
-fn time_monitor() -> u32 {
-    interrupt::free(|_| unsafe { SCHEDULER_COUNTER })
+// Tick getter needed by the scheduler
+fn get_tick() -> u32 {
+    interrupt::free(|cs| TIME_COUNTER.borrow(cs).get())
 }
 
-fn red_led_blinky_process() {
-    interrupt::free(|cs| {
-        if let Some(led_red) = LED_RED.borrow(cs).borrow_mut().as_mut() {
-            led_red.toggle();
-        }
-    })
-}
-
-fn green_led_blinky_process() {
+// Functions which are bound to task runnables
+fn green_led_blinky(_: EventMask) {
     interrupt::free(|cs| {
         if let Some(led_green) = LED_GREEN.borrow(cs).borrow_mut().as_mut() {
             led_green.toggle();
         }
     })
+}
+
+fn red_led_on() {
+    interrupt::free(|cs| {
+        if let Some(led_red) = LED_RED.borrow(cs).borrow_mut().as_mut() {
+            led_red.set_high();
+        }
+    });
+}
+
+fn red_led_blinky(event_mask: EventMask) {
+    if event_mask & EVENT_TOGGLE_RED_LED != 0 {
+        interrupt::free(|cs| {
+            if let Some(led_red) = LED_RED.borrow(cs).borrow_mut().as_mut() {
+                led_red.toggle();
+            }
+        });
+    }
+}
+
+fn red_led_switcher(_: EventMask) {
+    unsafe {
+        if let Some(red_led_blinky_task) = RED_LED_BLINKY_TASK.as_mut() {
+            red_led_blinky_task.set_event(EVENT_TOGGLE_RED_LED);
+        }
+    }
 }
 
 fn bsp_init() {
@@ -64,7 +88,7 @@ fn bsp_init() {
 
     let mut systick = cp.SYST;
     systick.set_clock_source(SystClkSource::Core);
-    systick.set_reload(180_000); // 1ms tick. TODO: Use time based literals
+    systick.set_reload(180_000); // 1ms tick
     systick.enable_counter();
     systick.enable_interrupt();
 
@@ -86,38 +110,52 @@ fn main() -> ! {
 
     bsp_init();
 
-    let mut scheduler = Scheduler::<SCHEDULER_TASK_COUNT>::new(time_monitor);
+    // Create scheduler, passing a tick getter
+    let mut scheduler = Scheduler::<SCHEDULER_TASK_COUNT>::new(get_tick);
 
-    scheduler.add_task(Task::new(
-        "green_led_blinky",
+    // Create tasks
+    let mut green_led_blinky_task = Task::new(
+        "green_led_blinky",     // Task name
+        None,                   // Init runnable
+        Some(green_led_blinky), // Process runnable
+        Some(250),              // Execution cycle
+        None,                   // Execution offset
+    );
+
+    let mut red_led_switcher_task = Task::new(
+        "red_led_switcher",
         None,
-        Some(green_led_blinky_process),
-        500,
-        0,
-    ));
+        Some(red_led_switcher),
+        Some(1000),
+        Some(10),
+    );
 
-    scheduler.add_task(Task::new(
-        "red_led_blinky",
-        None,
-        Some(red_led_blinky_process),
-        500,
-        500,
-    ));
+    // Use of unsafe blocks to handle static mutable tasks due to scheduler limitations
+    unsafe {
+        RED_LED_BLINKY_TASK.replace(Task::new(
+            "red_led_blinky",
+            Some(red_led_on),
+            Some(red_led_blinky),
+            None,
+            None,
+        ));
+    }
 
-    scheduler.add_task(Task::new(
-        "alive_counter",
-        None,
-        Some(|| {
-            static mut ALIVE_COUNTER: u32 = 0;
-            log!("Alive counter: {:?}", unsafe { ALIVE_COUNTER });
-            unsafe { ALIVE_COUNTER += 1 };
-        }),
-        1000,
-        0,
-    ));
+    // Add tasks to scheduler
+    scheduler.add_task(&mut green_led_blinky_task);
 
-    scheduler.register_idle_runnable(|| asm::nop()); // Bkpt placeholder
+    scheduler.add_task(&mut red_led_switcher_task);
 
+    unsafe {
+        if let Some(red_led_blinky_task) = RED_LED_BLINKY_TASK.as_mut() {
+            scheduler.add_task(red_led_blinky_task);
+        }
+    }
+
+    // Register idle runnable
+    scheduler.register_idle_runnable(asm::nop);
+
+    // Launch scheduler
     scheduler.launch();
 
     loop {}
@@ -125,10 +163,10 @@ fn main() -> ! {
 
 #[exception]
 fn SysTick() {
-    unsafe {
-        // Temporary to bring up the stuff
-        SCHEDULER_COUNTER += 1;
-    }
+    interrupt::free(|cs| {
+        let scheduler_counter = TIME_COUNTER.borrow(cs).get();
+        TIME_COUNTER.borrow(cs).set(scheduler_counter + 1);
+    })
 }
 
 #[exception]

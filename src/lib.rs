@@ -1,2 +1,2 @@
 #![no_std]
-pub mod scheduler;
+pub mod non_preemptive;
