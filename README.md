@@ -1,10 +1,11 @@
-# Hello-rust
+# Non-preemptive scheduler
 
 [![format](https://github.com/gdobato/hello-rust/actions//workflows/format.yml/badge.svg)](https://github.com/gdobato/hello-rust/actions/workflows/format.yml) 
 [![lib](https://github.com/gdobato/hello-rust/actions//workflows/lib.yml/badge.svg)](https://github.com/gdobato/hello-rust/actions/workflows/lib.yml) 
 [![examples](https://github.com/gdobato/hello-rust/actions/workflows/examples.yml/badge.svg)](https://github.com/gdobato/hello-rust/actions/workflows/examples.yml)
 
-Small project which makes use of [rust-embedded-wg](https://github.com/rust-embedded/wg) crates and references to run Rust on a Cortex-M4F target (STM32F429I-DISC1 board)
+Basic non-preemptive scheduler to control task execution upon cycle completion and external events
+Examples show its use running on a ARM Cortex-M4 MCU (STM32F429I-DISC1 board)
 
 ### Installation (Unix-like OS)
 Toolchain
@@ -25,7 +26,7 @@ cargo build [--release] --example <example_name>
 ```
 e.g :
 ```
-cargo build --example usb_dev_cdc
+cargo build --example led_blinky
 ```
 ### Flash on target
 ```
@@ -33,7 +34,7 @@ cargo embed [--release] --example <example_name>
 ```
 e.g :
 ```
-cargo embed --example usb_dev_cdc
+cargo embed --example led_blinky
 ```
 
 ### Attach to target
@@ -50,5 +51,5 @@ cargo embed [--release] --example <example_name>
 ```
 e.g :
 ```
-cargo embed --example usb_dev_cdc
+cargo embed --example led_blinky
 ```
