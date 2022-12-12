@@ -1,11 +1,12 @@
 # Non-preemptive scheduler
 
-[![format](https://github.com/gdobato/hello-rust/actions//workflows/format.yml/badge.svg)](https://github.com/gdobato/hello-rust/actions/workflows/format.yml) 
-[![lib](https://github.com/gdobato/hello-rust/actions//workflows/lib.yml/badge.svg)](https://github.com/gdobato/hello-rust/actions/workflows/lib.yml) 
-[![examples](https://github.com/gdobato/hello-rust/actions/workflows/examples.yml/badge.svg)](https://github.com/gdobato/hello-rust/actions/workflows/examples.yml)
+[![format](https://github.com/gdobato/non-preemptive-scheduler/actions//workflows/format.yml/badge.svg)](https://github.com/gdobato/non-preemptive-scheduler/actions/workflows/format.yml) 
+[![lib](https://github.com/gdobato/non-preemptive-scheduler/actions//workflows/lib.yml/badge.svg)](https://github.com/gdobato/non-preemptive-scheduler/actions/workflows/lib.yml) 
+[![examples](https://github.com/gdobato/non-preemptive-scheduler/actions/workflows/examples.yml/badge.svg)](https://github.com/gdobato/non-preemptive-scheduler/actions/workflows/examples.yml)
 
 Basic non-preemptive scheduler to control task execution upon cycle completion and external events
-Examples show its use running on a ARM Cortex-M4 MCU (STM32F429I-DISC1 board)
+
+Examples show its use running on a ARM Cortex-M4 MCU (STM32F429I-DISC1 board) along with some [rust-embedded crates](https://github.com/rust-embedded)
 
 ### Installation (Unix-like OS)
 Toolchain
