@@ -5,78 +5,79 @@
 #![no_std]
 #![no_main]
 
-use core::{cell::RefCell, str::from_utf8};
-use cortex_m::{asm, singleton};
+use core::{
+    cell::{Cell, RefCell},
+    str::from_utf8,
+};
+use cortex_m::{
+    asm,
+    interrupt::{free as critical_section, Mutex},
+    peripheral::syst::SystClkSource,
+    singleton,
+};
 use cortex_m_rt::{entry, exception, ExceptionFrame};
 use hal::{
+    gpio::{gpiog::PG13, Output, PushPull},
     otg_hs::{UsbBus, USB},
     pac::{self},
     prelude::*,
 };
 use panic_halt as _;
 use rtt_target::{rprintln as log, rtt_init_print as log_init};
+use scheduler::non_preemptive::{EventMask, Scheduler, Task};
 use stm32f4xx_hal as hal;
-use usb_device::prelude::*;
+use usb_device::{class_prelude::*, prelude::*};
+use usbd_serial::SerialPort;
 
-mod app {
-    use super::*;
-    pub struct UsbDevHandler<F, U> {
-        state: UsbDeviceState,
-        previous_state: UsbDeviceState,
-        on_enumeration_complete_cb: F,
-        on_enumeration_lost_cb: U,
-    }
+const SCHEDULER_TASK_COUNT: usize = 1;
+// Static and interior mutable entities
+static _USB_ENUMERATION_LED: Mutex<RefCell<Option<PG13<Output<PushPull>>>>> =
+    Mutex::new(RefCell::new(None));
+static USB_SERIAL_PORT: Mutex<RefCell<Option<SerialPort<UsbBus<USB>>>>> =
+    Mutex::new(RefCell::new(None));
+static USB_DEV: Mutex<RefCell<Option<UsbDevice<UsbBus<USB>>>>> = Mutex::new(RefCell::new(None));
+static TIME_COUNTER: Mutex<Cell<u32>> = Mutex::new(Cell::new(0));
+// Static mutable entities
+const USB_BUS_BUFFER_SIZE: usize = 512;
+static mut USB_BUS_BUFFER: [u32; USB_BUS_BUFFER_SIZE] = [0u32; USB_BUS_BUFFER_SIZE];
+const USB_APP_BUFFER_SIZE: usize = 64;
+static mut USB_APP_BUFFER: [u8; USB_APP_BUFFER_SIZE] = [0u8; USB_APP_BUFFER_SIZE];
 
-    impl<F, U> UsbDevHandler<F, U>
-    where
-        F: FnMut(),
-        U: FnMut(),
-    {
-        pub fn new(on_enumeration_complete_cb: F, on_enumeration_lost_cb: U) -> Self {
-            Self {
-                on_enumeration_complete_cb,
-                on_enumeration_lost_cb,
-                state: UsbDeviceState::Default,
-                previous_state: UsbDeviceState::Default,
-            }
-        }
-
-        pub fn update(&mut self, state: UsbDeviceState) {
-            if self.state != state {
-                self.previous_state = self.state;
-                self.state = state;
-                self.on_transition();
-            }
-        }
-
-        pub fn is_enumerated(&self) -> bool {
-            self.state == UsbDeviceState::Configured
-        }
-
-        fn on_transition(&mut self) {
-            match self.state {
-                // Going to configured state means that device gets enumerated
-                UsbDeviceState::Configured => {
-                    log!("Enumeration completed");
-                    (self.on_enumeration_complete_cb)();
-                }
-                // Coming from configured state means that device lost enumeration
-                _ if self.previous_state == UsbDeviceState::Configured => {
-                    log!("Enumeration lost");
-                    (self.on_enumeration_lost_cb)();
-                }
-                // Ignore any other transition
-                _ => (),
-            }
-        }
-    }
+// Tick getter needed by the scheduler
+fn get_tick() -> u32 {
+    critical_section(|cs| TIME_COUNTER.borrow(cs).get())
 }
 
-#[entry]
-fn main() -> ! {
-    log_init!();
-    log!("Init Target...");
+// Functions which are bound to task runnables
+fn usb_process(_: EventMask) {
+    critical_section(|cs| {
+        if let (Some(usb_dev), Some(usb_serial_port)) = (
+            USB_DEV.borrow(cs).borrow_mut().as_mut(),
+            USB_SERIAL_PORT.borrow(cs).borrow_mut().as_mut(),
+        ) {
+            if usb_dev.poll(&mut [usb_serial_port]) {
+                // Read from reception fifo.
+                match usb_serial_port.read(unsafe { &mut USB_APP_BUFFER[..] }) {
+                    Ok(cnt) if cnt > 0 => {
+                        log!(
+                            "Received {} bytes: {}",
+                            cnt,
+                            from_utf8(unsafe { &USB_APP_BUFFER[..cnt] }).unwrap_or("not valid")
+                        );
+                        // Send back received data
+                        match usb_serial_port.write(unsafe { &USB_APP_BUFFER[..cnt] }) {
+                            Ok(_) => (),
+                            Err(err) => log!("Error in transmission: {:?}", err),
+                        }
+                    }
+                    _ => (),
+                }
+            }
+        }
+    });
+}
 
+fn bsp_init() {
     let cp = cortex_m::Peripherals::take().unwrap();
     let dp = pac::Peripherals::take().unwrap();
 
@@ -96,9 +97,11 @@ fn main() -> ! {
         panic!("USB clock invalid!");
     }
 
-    // Get Systick as delay source
-    let systick = cp.SYST;
-    let mut delay = systick.delay(&clks);
+    let mut systick = cp.SYST;
+    systick.set_clock_source(SystClkSource::Core);
+    systick.set_reload(180_000); // 1ms tick
+    systick.enable_counter();
+    systick.enable_interrupt();
 
     // Initialize USB peripheral
     let gpio_b = dp.GPIOB.split();
@@ -112,54 +115,59 @@ fn main() -> ! {
     };
 
     // Initialize USB stack
-    const USB_BUS_BUFFER_SIZE: usize = 512;
-    let usb_bus_buffer: &'static mut [u32; USB_BUS_BUFFER_SIZE] =
-        singleton!(USB_BUFFER: [u32; USB_BUS_BUFFER_SIZE] = [0u32; USB_BUS_BUFFER_SIZE]).unwrap();
-    let usb_bus = UsbBus::new(usb, usb_bus_buffer);
-    let mut usb_serial_port = usbd_serial::SerialPort::new(&usb_bus);
-    let mut usb_dev = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x1234, 0x1234))
-        .manufacturer("Hello rust")
-        .product("Usb device CDC example")
-        .serial_number("01-23456")
-        .device_class(usbd_serial::USB_CLASS_CDC)
-        .build();
+    let usb_bus: &'static UsbBusAllocator<UsbBus<USB>> = singleton!(
+        USB_BUS: UsbBusAllocator<UsbBus<USB>> = UsbBus::new(usb, unsafe { &mut USB_BUS_BUFFER })
+    )
+    .unwrap();
 
-    // Initialize app buffer to process data
-    const USB_APP_BUFFER_SIZE: usize = 64;
-    let usb_app_buffer: &'static mut [u8; USB_APP_BUFFER_SIZE] =
-        singleton!(USB_APP_BUFFER: [u8; USB_APP_BUFFER_SIZE] = [0u8; USB_APP_BUFFER_SIZE]).unwrap();
+    critical_section(|cs| {
+        USB_SERIAL_PORT
+            .borrow(cs)
+            .replace(Some(usbd_serial::SerialPort::new(usb_bus)));
+        USB_DEV.borrow(cs).replace(Some(
+            UsbDeviceBuilder::new(usb_bus, UsbVidPid(0xABCD, 0xABCD))
+                .manufacturer("Hello rust")
+                .product("Usb device CDC example")
+                .serial_number("01-23456")
+                .device_class(usbd_serial::USB_CLASS_CDC)
+                .build(),
+        ));
+    });
+}
 
-    // Initialize usb device handler
-    let led_enumeration = RefCell::new(dp.GPIOG.split().pg13.into_push_pull_output()); // TODO: Apply better solution than interior mutability
-    let mut usb_app_dev_handler = app::UsbDevHandler::new(
-        || led_enumeration.borrow_mut().set_high(), // Switch LED on upon enumeration completion
-        || led_enumeration.borrow_mut().set_low(),  // Switch LED off upon enumeration lost
+#[entry]
+fn main() -> ! {
+    log_init!();
+
+    bsp_init();
+
+    // Create scheduler, passing a tick getter
+    let mut scheduler = Scheduler::<SCHEDULER_TASK_COUNT>::new(get_tick);
+
+    // Create tasks
+    let mut usb_echo_task = Task::new(
+        "usb_echo",        // Task name
+        None,              // Init runnable
+        Some(usb_process), // Process runnable
+        Some(10),          // Execution cycle
+        None,              // Execution offset
     );
 
-    // Super loop for polling usb events
-    loop {
-        usb_app_dev_handler.update(usb_dev.state());
+    // Add tasks to scheduler
+    scheduler.add_task(&mut usb_echo_task);
 
-        if usb_dev.poll(&mut [&mut usb_serial_port]) && usb_app_dev_handler.is_enumerated() {
-            // Read from reception fifo. TODO: Needs additional handling
-            match usb_serial_port.read(&mut usb_app_buffer[..]) {
-                Ok(cnt) if cnt > 0 => {
-                    log!(
-                        "Received {} bytes: {}",
-                        cnt,
-                        from_utf8(&usb_app_buffer[..cnt]).unwrap_or("not valid")
-                    );
-                    // Send back received data
-                    match usb_serial_port.write(&usb_app_buffer[..cnt]) {
-                        Ok(_) => (),
-                        Err(err) => log!("Error in transmission: {:?}", err),
-                    }
-                }
-                _ => (),
-            }
-        }
-        delay.delay_ms(5u8);
-    }
+    // Launch scheduler
+    scheduler.launch();
+
+    loop {}
+}
+
+#[exception]
+fn SysTick() {
+    critical_section(|cs| {
+        let scheduler_counter = TIME_COUNTER.borrow(cs).get();
+        TIME_COUNTER.borrow(cs).set(scheduler_counter + 1);
+    })
 }
 
 #[exception]
