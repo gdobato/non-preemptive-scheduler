@@ -4,7 +4,7 @@
 [![lib](https://github.com/gdobato/non-preemptive-scheduler/actions//workflows/lib.yml/badge.svg)](https://github.com/gdobato/non-preemptive-scheduler/actions/workflows/lib.yml) 
 [![examples](https://github.com/gdobato/non-preemptive-scheduler/actions/workflows/examples.yml/badge.svg)](https://github.com/gdobato/non-preemptive-scheduler/actions/workflows/examples.yml)
 
-Basic non-preemptive scheduler to control task execution upon cycle completion and external events
+Basic non-preemptive scheduler to control task execution upon cycle completion and external events on an embedded target
 
 Examples show its use running on a ARM Cortex-M4 MCU (STM32F429I-DISC1 board) along with some [rust-embedded crates](https://github.com/rust-embedded)
 
