@@ -17,7 +17,7 @@ use cortex_m::{
 };
 use cortex_m_rt::{entry, exception, ExceptionFrame};
 use hal::{
-    gpio::{gpiog::PG13, Output, PushPull},
+    gpio::{gpiog::PG13, Output, PushPull, PG14},
     otg_hs::{UsbBus, USB},
     pac::{self},
     prelude::*,
@@ -29,10 +29,10 @@ use stm32f4xx_hal as hal;
 use usb_device::{class_prelude::*, prelude::*};
 use usbd_serial::SerialPort;
 
-const SCHEDULER_TASK_COUNT: usize = 1;
+const SCHEDULER_TASK_COUNT: usize = 2;
 // Static and interior mutable entities
-static _USB_ENUMERATION_LED: Mutex<RefCell<Option<PG13<Output<PushPull>>>>> =
-    Mutex::new(RefCell::new(None));
+static GREEN_LED: Mutex<RefCell<Option<PG13<Output<PushPull>>>>> = Mutex::new(RefCell::new(None));
+static RED_LED: Mutex<RefCell<Option<PG14<Output<PushPull>>>>> = Mutex::new(RefCell::new(None));
 static USB_SERIAL_PORT: Mutex<RefCell<Option<SerialPort<UsbBus<USB>>>>> =
     Mutex::new(RefCell::new(None));
 static USB_DEV: Mutex<RefCell<Option<UsbDevice<UsbBus<USB>>>>> = Mutex::new(RefCell::new(None));
@@ -51,9 +51,10 @@ fn get_tick() -> u32 {
 // Functions which are bound to task runnables
 fn usb_process(_: EventMask) {
     critical_section(|cs| {
-        if let (Some(usb_dev), Some(usb_serial_port)) = (
+        if let (Some(usb_dev), Some(usb_serial_port), Some(enumeration_led)) = (
             USB_DEV.borrow(cs).borrow_mut().as_mut(),
             USB_SERIAL_PORT.borrow(cs).borrow_mut().as_mut(),
+            GREEN_LED.borrow(cs).borrow_mut().as_mut(),
         ) {
             if usb_dev.poll(&mut [usb_serial_port]) {
                 // Read from reception fifo.
@@ -73,8 +74,20 @@ fn usb_process(_: EventMask) {
                     _ => (),
                 }
             }
+            match usb_dev.state() {
+                UsbDeviceState::Configured => enumeration_led.set_high(),
+                _ => enumeration_led.set_low(),
+            }
         }
     });
+}
+
+fn led_blinky(_: EventMask) {
+    critical_section(|cs| {
+        if let Some(red_led) = RED_LED.borrow(cs).borrow_mut().as_mut() {
+            red_led.toggle();
+        }
+    })
 }
 
 fn bsp_init() {
@@ -102,6 +115,17 @@ fn bsp_init() {
     systick.set_reload(180_000); // 1ms tick
     systick.enable_counter();
     systick.enable_interrupt();
+
+    // Initialize LEDs
+    let gpio_g = dp.GPIOG.split();
+    critical_section(|cs| {
+        GREEN_LED
+            .borrow(cs)
+            .replace(Some(gpio_g.pg13.into_push_pull_output()));
+        RED_LED
+            .borrow(cs)
+            .replace(Some(gpio_g.pg14.into_push_pull_output()));
+    });
 
     // Initialize USB peripheral
     let gpio_b = dp.GPIOB.split();
@@ -149,12 +173,16 @@ fn main() -> ! {
         "usb_echo",        // Task name
         None,              // Init runnable
         Some(usb_process), // Process runnable
-        Some(10),          // Execution cycle
+        Some(10),           // Execution cycle
         None,              // Execution offset
     );
 
+    let mut led_blinky_task = Task::new("led_blinky", None, Some(led_blinky), Some(500), None);
+
     // Add tasks to scheduler
     scheduler.add_task(&mut usb_echo_task);
+
+    scheduler.add_task(&mut led_blinky_task);
 
     // Launch scheduler
     scheduler.launch();

@@ -90,8 +90,8 @@ fn bsp_init() {
     systick.enable_counter();
     systick.enable_interrupt();
 
+    // Initialize LEDs
     let gpio_g = dp.GPIOG.split();
-
     critical_section(|cs| {
         GREEN_LED
             .borrow(cs)
