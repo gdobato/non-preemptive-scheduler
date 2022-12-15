@@ -173,7 +173,7 @@ fn main() -> ! {
         "usb_echo",        // Task name
         None,              // Init runnable
         Some(usb_process), // Process runnable
-        Some(10),           // Execution cycle
+        Some(10),          // Execution cycle
         None,              // Execution offset
     );
 
