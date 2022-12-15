@@ -62,9 +62,9 @@ impl Task {
 }
 
 pub struct Scheduler<'a, const N: usize> {
-    pub time_monitor: TimeMonitor,
-    pub idle_runnable: Option<IdleRunnable>,
-    pub task_list: TaskList<'a, N>,
+    time_monitor: TimeMonitor,
+    idle_runnable: Option<IdleRunnable>,
+    task_list: TaskList<'a, N>,
 }
 
 impl<'a, const N: usize> Scheduler<'a, N> {
