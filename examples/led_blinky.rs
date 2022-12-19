@@ -21,17 +21,21 @@ use hal::{
 };
 use panic_halt as _;
 use rtt_target::{rprintln as log, rtt_init_print as log_init};
-use scheduler::non_preemptive::{EventMask, Scheduler, Task};
+use scheduler::non_preemptive::*;
+use scheduler_macros::*;
 use stm32f4xx_hal as hal;
 
-const SCHEDULER_TASK_COUNT: usize = 3;
+// Events
 const EVENT_TOGGLE_RED_LED: EventMask = 0x00000001;
 // Static and interior mutable entities
 static GREEN_LED: Mutex<RefCell<Option<PG13<Output<PushPull>>>>> = Mutex::new(RefCell::new(None));
 static RED_LED: Mutex<RefCell<Option<PG14<Output<PushPull>>>>> = Mutex::new(RefCell::new(None));
 static TIME_COUNTER: Mutex<Cell<u32>> = Mutex::new(Cell::new(0));
-// Static mutable entities
-static mut RED_LED_BLINKY_TASK: Option<Task> = None;
+
+// Instantiate scheduler
+const SCHEDULER_TASK_COUNT: usize = 3;
+#[scheduler_nonpreeptive(SCHEDULER_TASK_COUNT)]
+struct Scheduler;
 
 // Tick getter needed by the scheduler
 fn get_tick() -> u32 {
@@ -66,13 +70,11 @@ fn red_led_blinky(event_mask: EventMask) {
 }
 
 fn red_led_switcher(_: EventMask) {
-    unsafe {
-        if let Some(red_led_blinky_task) = RED_LED_BLINKY_TASK.as_mut() {
-            red_led_blinky_task.set_event(EVENT_TOGGLE_RED_LED);
-        }
-    }
+    // Set event on red_led_blinky task
+    scheduler_set_event!(("red_led_blinky", EVENT_TOGGLE_RED_LED));
 }
 
+// BSP initialization
 fn bsp_init() {
     let cp = cortex_m::Peripherals::take().unwrap();
     let dp = pac::Peripherals::take().unwrap();
@@ -108,11 +110,11 @@ fn main() -> ! {
 
     bsp_init();
 
-    // Create scheduler, passing a tick getter
-    let mut scheduler = Scheduler::<SCHEDULER_TASK_COUNT>::new(get_tick);
+    // Initialize scheduler, passing a tick getter
+    scheduler_init!(get_tick);
 
     // Create tasks
-    let mut green_led_blinky_task = Task::new(
+    let green_led_blinky_task = Task::new(
         "green_led_blinky",     // Task name
         None,                   // Init runnable
         Some(green_led_blinky), // Process runnable
@@ -120,7 +122,7 @@ fn main() -> ! {
         None,                   // Execution offset
     );
 
-    let mut red_led_switcher_task = Task::new(
+    let red_led_switcher_task = Task::new(
         "red_led_switcher",
         None,
         Some(red_led_switcher),
@@ -128,35 +130,28 @@ fn main() -> ! {
         Some(10),
     );
 
-    // Use of unsafe blocks to handle static mutable tasks due to scheduler limitations
-    unsafe {
-        RED_LED_BLINKY_TASK.replace(Task::new(
-            "red_led_blinky",
-            Some(red_led_on),
-            Some(red_led_blinky),
-            None,
-            None,
-        ));
-    }
+    let red_led_blinky_task = Task::new(
+        "red_led_blinky",
+        Some(red_led_on),
+        Some(red_led_blinky),
+        None,
+        None,
+    );
 
     // Add tasks to scheduler
-    scheduler.add_task(&mut green_led_blinky_task);
-
-    scheduler.add_task(&mut red_led_switcher_task);
-
-    unsafe {
-        if let Some(red_led_blinky_task) = RED_LED_BLINKY_TASK.as_mut() {
-            scheduler.add_task(red_led_blinky_task);
-        }
-    }
+    scheduler_add_task!(green_led_blinky_task);
+    scheduler_add_task!(red_led_switcher_task);
+    scheduler_add_task!(red_led_blinky_task);
 
     // Register idle runnable
-    scheduler.register_idle_runnable(asm::nop);
+    scheduler_register_idle_runnable!(asm::nop);
 
     // Launch scheduler
-    scheduler.launch();
+    scheduler_launch!();
 
-    loop {}
+    loop {
+        panic!();
+    }
 }
 
 #[exception]
