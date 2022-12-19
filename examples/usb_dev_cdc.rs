@@ -1,7 +1,6 @@
 //! Example
 //! Usb device CDC class which makes uses of existing rust-embedded crates
-//! Basic echo functionality, polling approach
-
+//! and non_preemptive scheduler running on a STM32F429I-DISC1 board
 #![no_std]
 #![no_main]
 
@@ -24,12 +23,15 @@ use hal::{
 };
 use panic_halt as _;
 use rtt_target::{rprintln as log, rtt_init_print as log_init};
-use scheduler::non_preemptive::{EventMask, Scheduler, Task};
+use scheduler::non_preemptive::*;
+use scheduler_macros::*;
 use stm32f4xx_hal as hal;
 use usb_device::{class_prelude::*, prelude::*};
 use usbd_serial::SerialPort;
 
-const SCHEDULER_TASK_COUNT: usize = 2;
+// Events
+const EVENT_USB_ENUMERATION: EventMask = 0x00000001;
+const EVENT_USB_ENUMERATION_LOST: EventMask = 0x00000002;
 // Static and interior mutable entities
 static GREEN_LED: Mutex<RefCell<Option<PG13<Output<PushPull>>>>> = Mutex::new(RefCell::new(None));
 static RED_LED: Mutex<RefCell<Option<PG14<Output<PushPull>>>>> = Mutex::new(RefCell::new(None));
@@ -43,6 +45,11 @@ static mut USB_BUS_BUFFER: [u32; USB_BUS_BUFFER_SIZE] = [0u32; USB_BUS_BUFFER_SI
 const USB_APP_BUFFER_SIZE: usize = 64;
 static mut USB_APP_BUFFER: [u8; USB_APP_BUFFER_SIZE] = [0u8; USB_APP_BUFFER_SIZE];
 
+// Instantiate scheduler
+const SCHEDULER_TASK_COUNT: usize = 2;
+#[scheduler_nonpreeptive(SCHEDULER_TASK_COUNT)]
+struct Scheduler;
+
 // Tick getter needed by the scheduler
 fn get_tick() -> u32 {
     critical_section(|cs| TIME_COUNTER.borrow(cs).get())
@@ -51,11 +58,12 @@ fn get_tick() -> u32 {
 // Functions which are bound to task runnables
 fn usb_process(_: EventMask) {
     critical_section(|cs| {
-        if let (Some(usb_dev), Some(usb_serial_port), Some(enumeration_led)) = (
+        if let (Some(usb_dev), Some(usb_serial_port)) = (
             USB_DEV.borrow(cs).borrow_mut().as_mut(),
             USB_SERIAL_PORT.borrow(cs).borrow_mut().as_mut(),
-            GREEN_LED.borrow(cs).borrow_mut().as_mut(),
         ) {
+            // Previous state before polling
+            let previous_state = usb_dev.state();
             if usb_dev.poll(&mut [usb_serial_port]) {
                 // Read from reception fifo.
                 match usb_serial_port.read(unsafe { &mut USB_APP_BUFFER[..] }) {
@@ -74,22 +82,54 @@ fn usb_process(_: EventMask) {
                     _ => (),
                 }
             }
+
+            // Current state after polling
             match usb_dev.state() {
-                UsbDeviceState::Configured => enumeration_led.set_high(),
-                _ => enumeration_led.set_low(),
+                // Transition to enumeration
+                UsbDeviceState::Configured if previous_state == UsbDeviceState::Addressed => {
+                    scheduler_set_event!(("led_handler", EVENT_USB_ENUMERATION));
+                }
+                // Already enumerated
+                UsbDeviceState::Configured => {}
+                // Enumeration lost
+                _ if previous_state == UsbDeviceState::Configured => {
+                    scheduler_set_event!(("led_handler", EVENT_USB_ENUMERATION_LOST));
+                }
+                _ => {}
             }
         }
     });
 }
 
-fn led_blinky(_: EventMask) {
-    critical_section(|cs| {
-        if let Some(red_led) = RED_LED.borrow(cs).borrow_mut().as_mut() {
-            red_led.toggle();
+fn led_handler(event_mask: EventMask) {
+    // Execution due to an event
+    if event_mask != 0 {
+        match event_mask & (EVENT_USB_ENUMERATION | EVENT_USB_ENUMERATION_LOST) {
+            EVENT_USB_ENUMERATION => critical_section(|cs| {
+                if let Some(green_led) = GREEN_LED.borrow(cs).borrow_mut().as_mut() {
+                    log!("Enumeration completed");
+                    green_led.set_high();
+                }
+            }),
+            EVENT_USB_ENUMERATION_LOST => critical_section(|cs| {
+                if let Some(green_led) = GREEN_LED.borrow(cs).borrow_mut().as_mut() {
+                    log!("Enumeration lost");
+                    green_led.set_low();
+                }
+            }),
+            _ => {}
         }
-    })
+    // Cyclic execution
+    } else {
+        critical_section(|cs| {
+            if let Some(red_led) = RED_LED.borrow(cs).borrow_mut().as_mut() {
+                red_led.toggle();
+            }
+        });
+    }
 }
 
+// BSP initialization
 fn bsp_init() {
     let cp = cortex_m::Peripherals::take().unwrap();
     let dp = pac::Peripherals::take().unwrap();
@@ -165,11 +205,11 @@ fn main() -> ! {
 
     bsp_init();
 
-    // Create scheduler, passing a tick getter
-    let mut scheduler = Scheduler::<SCHEDULER_TASK_COUNT>::new(get_tick);
+    // Initialize scheduler, passing a tick getter
+    scheduler_init!(get_tick);
 
     // Create tasks
-    let mut usb_echo_task = Task::new(
+    let usb_echo_task = Task::new(
         "usb_echo",        // Task name
         None,              // Init runnable
         Some(usb_process), // Process runnable
@@ -177,17 +217,18 @@ fn main() -> ! {
         None,              // Execution offset
     );
 
-    let mut led_blinky_task = Task::new("led_blinky", None, Some(led_blinky), Some(500), None);
+    let led_handler_task = Task::new("led_handler", None, Some(led_handler), Some(500), None);
 
     // Add tasks to scheduler
-    scheduler.add_task(&mut usb_echo_task);
-
-    scheduler.add_task(&mut led_blinky_task);
+    scheduler_add_task!(usb_echo_task);
+    scheduler_add_task!(led_handler_task);
 
     // Launch scheduler
-    scheduler.launch();
+    scheduler_launch!();
 
-    loop {}
+    loop {
+        panic!();
+    }
 }
 
 #[exception]

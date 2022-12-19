@@ -13,7 +13,7 @@ type ProcessRunnable = fn(u32);
 type IdleRunnable = fn();
 type TimeMonitor = fn() -> u32;
 type TaskName = &'static str;
-type TaskList<'a, const N: usize> = Vec<&'a mut Task, N>;
+type TaskList<const N: usize> = Vec<Task, N>;
 pub type EventMask = u32;
 
 #[derive(Debug)]
@@ -61,14 +61,14 @@ impl Task {
     }
 }
 
-pub struct Scheduler<'a, const N: usize> {
+pub struct Scheduler<const N: usize> {
     time_monitor: TimeMonitor,
     idle_runnable: Option<IdleRunnable>,
-    task_list: TaskList<'a, N>,
+    task_list: TaskList<N>,
 }
 
-impl<'a, const N: usize> Scheduler<'a, N> {
-    pub fn new(time_monitor: TimeMonitor) -> Scheduler<'a, N> {
+impl<const N: usize> Scheduler<N> {
+    pub fn new(time_monitor: TimeMonitor) -> Scheduler<N> {
         Scheduler {
             time_monitor,
             idle_runnable: None,
@@ -76,7 +76,7 @@ impl<'a, const N: usize> Scheduler<'a, N> {
         }
     }
 
-    pub fn add_task(&mut self, task: &'a mut Task) {
+    pub fn add_task(&mut self, task: Task) {
         self.task_list.push(task).unwrap();
     }
 

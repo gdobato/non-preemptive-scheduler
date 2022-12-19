@@ -13,5 +13,6 @@ panic-halt = "0.2.0"
 rtt-target = { version = "0.3.0", features = ["cortex-m"] }
 # Official crate 13.0.2 does not contain yet some adaptations needed for otg-hs
 stm32f4xx-hal = { git = "https://github.com/stm32-rs/stm32f4xx-hal", branch = "master", features = ["stm32f429", "usb_hs", "otg-hs"] }
+scheduler-macros = { path = "macros", version = "0.1.0" }
 usb-device = "0.2.9"
 usbd-serial = "0.1.1"
