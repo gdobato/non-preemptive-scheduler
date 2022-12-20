@@ -53,7 +53,7 @@ static mut USB_APP_BUFFER: [u8; USB_APP_BUFFER_SIZE] = [0u8; USB_APP_BUFFER_SIZE
 
 // Instantiate scheduler
 const SCHEDULER_TASK_COUNT: usize = 2;
-#[scheduler_nonpreeptive(SCHEDULER_TASK_COUNT)]
+#[scheduler_nonpreeptive((SCHEDULER_TASK_COUNT, get_tick))]
 struct Scheduler;
 
 // Tick getter needed by the scheduler
@@ -201,9 +201,6 @@ fn main() -> ! {
     log_init!();
 
     bsp_init();
-
-    // Initialize scheduler, passing a tick getter
-    scheduler_init!(get_tick);
 
     // Create tasks
     let usb_echo_task = Task::new(

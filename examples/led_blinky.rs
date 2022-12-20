@@ -35,7 +35,7 @@ static TIME_COUNTER: Shared<Cell<u32>> = Shared::new(Cell::new(0));
 
 // Instantiate scheduler
 const SCHEDULER_TASK_COUNT: usize = 3;
-#[scheduler_nonpreeptive(SCHEDULER_TASK_COUNT)]
+#[scheduler_nonpreeptive((SCHEDULER_TASK_COUNT, get_tick))]
 struct Scheduler;
 
 // Tick getter needed by the scheduler
@@ -102,9 +102,6 @@ fn main() -> ! {
     log_init!();
 
     bsp_init();
-
-    // Initialize scheduler, passing a tick getter
-    scheduler_init!(get_tick);
 
     // Create tasks
     let green_led_blinky_task = Task::new(
