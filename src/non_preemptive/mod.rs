@@ -2,6 +2,8 @@
 //! Basic non-preemptive scheduler to control task execution upon cycle completion
 //! and external events which could fit on basic applications
 
+pub mod resources;
+
 use core::str;
 use cortex_m::interrupt::free as critical_section;
 use heapless::Vec;
@@ -33,7 +35,7 @@ pub struct Task {
 }
 
 impl Task {
-    pub fn new(
+    pub const fn new(
         name: TaskName,
         init_runnable: Option<InitRunnable>,
         process_runnable: Option<ProcessRunnable>,
@@ -68,7 +70,7 @@ pub struct Scheduler<const N: usize> {
 }
 
 impl<const N: usize> Scheduler<N> {
-    pub fn new(time_monitor: TimeMonitor) -> Scheduler<N> {
+    pub const fn new(time_monitor: TimeMonitor) -> Scheduler<N> {
         Scheduler {
             time_monitor,
             idle_runnable: None,
