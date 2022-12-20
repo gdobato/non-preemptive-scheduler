@@ -23,7 +23,10 @@ use hal::{
 };
 use panic_halt as _;
 use rtt_target::{rprintln as log, rtt_init_print as log_init};
-use scheduler::non_preemptive::*;
+use scheduler::non_preemptive::{
+    resources::{Shared, UnShared},
+    *,
+};
 use scheduler_macros::*;
 use stm32f4xx_hal as hal;
 use usb_device::{class_prelude::*, prelude::*};
@@ -33,12 +36,15 @@ use usbd_serial::SerialPort;
 const EVENT_USB_ENUMERATION: EventMask = 0x00000001;
 const EVENT_USB_ENUMERATION_LOST: EventMask = 0x00000002;
 // Static and interior mutable entities
-static GREEN_LED: Mutex<RefCell<Option<PG13<Output<PushPull>>>>> = Mutex::new(RefCell::new(None));
-static RED_LED: Mutex<RefCell<Option<PG14<Output<PushPull>>>>> = Mutex::new(RefCell::new(None));
-static USB_SERIAL_PORT: Mutex<RefCell<Option<SerialPort<UsbBus<USB>>>>> =
-    Mutex::new(RefCell::new(None));
-static USB_DEV: Mutex<RefCell<Option<UsbDevice<UsbBus<USB>>>>> = Mutex::new(RefCell::new(None));
-static TIME_COUNTER: Mutex<Cell<u32>> = Mutex::new(Cell::new(0));
+static GREEN_LED: UnShared<RefCell<Option<PG13<Output<PushPull>>>>> =
+    UnShared::new(RefCell::new(None));
+static RED_LED: UnShared<RefCell<Option<PG14<Output<PushPull>>>>> =
+    UnShared::new(RefCell::new(None));
+static USB_SERIAL_PORT: UnShared<RefCell<Option<SerialPort<UsbBus<USB>>>>> =
+    UnShared::new(RefCell::new(None));
+static USB_DEV: UnShared<RefCell<Option<UsbDevice<UsbBus<USB>>>>> =
+    UnShared::new(RefCell::new(None));
+static TIME_COUNTER: Shared<Cell<u32>> = Mutex::new(Cell::new(0));
 // Static mutable entities
 const USB_BUS_BUFFER_SIZE: usize = 512;
 static mut USB_BUS_BUFFER: [u32; USB_BUS_BUFFER_SIZE] = [0u32; USB_BUS_BUFFER_SIZE];
@@ -57,75 +63,70 @@ fn get_tick() -> u32 {
 
 // Functions which are bound to task runnables
 fn usb_process(_: EventMask) {
-    critical_section(|cs| {
-        if let (Some(usb_dev), Some(usb_serial_port)) = (
-            USB_DEV.borrow(cs).borrow_mut().as_mut(),
-            USB_SERIAL_PORT.borrow(cs).borrow_mut().as_mut(),
-        ) {
-            // Previous state before polling
-            let previous_state = usb_dev.state();
-            if usb_dev.poll(&mut [usb_serial_port]) {
-                // Read from reception fifo.
-                match usb_serial_port.read(unsafe { &mut USB_APP_BUFFER[..] }) {
-                    Ok(cnt) if cnt > 0 => {
-                        log!(
-                            "Received {} bytes: {}",
-                            cnt,
-                            from_utf8(unsafe { &USB_APP_BUFFER[..cnt] }).unwrap_or("not valid")
-                        );
-                        // Send back received data
-                        match usb_serial_port.write(unsafe { &USB_APP_BUFFER[..cnt] }) {
-                            Ok(_) => (),
-                            Err(err) => log!("Error in transmission: {:?}", err),
-                        }
+    if let (Some(usb_dev), Some(usb_serial_port)) = (
+        USB_DEV.borrow().borrow_mut().as_mut(),
+        USB_SERIAL_PORT.borrow().borrow_mut().as_mut(),
+    ) {
+        // Previous state before polling
+        let previous_state = usb_dev.state();
+        if usb_dev.poll(&mut [usb_serial_port]) {
+            // Read from reception fifo.
+            match usb_serial_port.read(unsafe { &mut USB_APP_BUFFER[..] }) {
+                Ok(cnt) if cnt > 0 => {
+                    log!(
+                        "Received {} bytes: {}",
+                        cnt,
+                        from_utf8(unsafe { &USB_APP_BUFFER[..cnt] }).unwrap_or("not valid")
+                    );
+                    // Send back received data
+                    match usb_serial_port.write(unsafe { &USB_APP_BUFFER[..cnt] }) {
+                        Ok(_) => (),
+                        Err(err) => log!("Error in transmission: {:?}", err),
                     }
-                    _ => (),
                 }
-            }
-
-            // Current state after polling
-            match usb_dev.state() {
-                // Transition to enumeration
-                UsbDeviceState::Configured if previous_state == UsbDeviceState::Addressed => {
-                    scheduler_set_event!(("led_handler", EVENT_USB_ENUMERATION));
-                }
-                // Already enumerated
-                UsbDeviceState::Configured => {}
-                // Enumeration lost
-                _ if previous_state == UsbDeviceState::Configured => {
-                    scheduler_set_event!(("led_handler", EVENT_USB_ENUMERATION_LOST));
-                }
-                _ => {}
+                _ => (),
             }
         }
-    });
+
+        // Current state after polling
+        match usb_dev.state() {
+            // Transition to enumeration
+            UsbDeviceState::Configured if previous_state == UsbDeviceState::Addressed => {
+                scheduler_set_event!(("led_handler", EVENT_USB_ENUMERATION));
+            }
+            // Already enumerated
+            UsbDeviceState::Configured => {}
+            // Enumeration lost
+            _ if previous_state == UsbDeviceState::Configured => {
+                scheduler_set_event!(("led_handler", EVENT_USB_ENUMERATION_LOST));
+            }
+            _ => (),
+        }
+    }
 }
 
 fn led_handler(event_mask: EventMask) {
     // Execution due to an event
     if event_mask != 0 {
         match event_mask & (EVENT_USB_ENUMERATION | EVENT_USB_ENUMERATION_LOST) {
-            EVENT_USB_ENUMERATION => critical_section(|cs| {
-                if let Some(green_led) = GREEN_LED.borrow(cs).borrow_mut().as_mut() {
+            EVENT_USB_ENUMERATION => {
+                if let Some(green_led) = GREEN_LED.borrow().borrow_mut().as_mut() {
                     log!("Enumeration completed");
                     green_led.set_high();
                 }
-            }),
-            EVENT_USB_ENUMERATION_LOST => critical_section(|cs| {
-                if let Some(green_led) = GREEN_LED.borrow(cs).borrow_mut().as_mut() {
+            }
+
+            EVENT_USB_ENUMERATION_LOST => {
+                if let Some(green_led) = GREEN_LED.borrow().borrow_mut().as_mut() {
                     log!("Enumeration lost");
                     green_led.set_low();
                 }
-            }),
-            _ => {}
+            }
+            _ => (),
         }
     // Cyclic execution
-    } else {
-        critical_section(|cs| {
-            if let Some(red_led) = RED_LED.borrow(cs).borrow_mut().as_mut() {
-                red_led.toggle();
-            }
-        });
+    } else if let Some(red_led) = RED_LED.borrow().borrow_mut().as_mut() {
+        red_led.toggle();
     }
 }
 
@@ -158,14 +159,12 @@ fn bsp_init() {
 
     // Initialize LEDs
     let gpio_g = dp.GPIOG.split();
-    critical_section(|cs| {
-        GREEN_LED
-            .borrow(cs)
-            .replace(Some(gpio_g.pg13.into_push_pull_output()));
-        RED_LED
-            .borrow(cs)
-            .replace(Some(gpio_g.pg14.into_push_pull_output()));
-    });
+    GREEN_LED
+        .borrow()
+        .replace(Some(gpio_g.pg13.into_push_pull_output()));
+    RED_LED
+        .borrow()
+        .replace(Some(gpio_g.pg14.into_push_pull_output()));
 
     // Initialize USB peripheral
     let gpio_b = dp.GPIOB.split();
@@ -184,19 +183,17 @@ fn bsp_init() {
     )
     .unwrap();
 
-    critical_section(|cs| {
-        USB_SERIAL_PORT
-            .borrow(cs)
-            .replace(Some(usbd_serial::SerialPort::new(usb_bus)));
-        USB_DEV.borrow(cs).replace(Some(
-            UsbDeviceBuilder::new(usb_bus, UsbVidPid(0xABCD, 0xABCD))
-                .manufacturer("Hello rust")
-                .product("Usb device CDC example")
-                .serial_number("01-23456")
-                .device_class(usbd_serial::USB_CLASS_CDC)
-                .build(),
-        ));
-    });
+    USB_SERIAL_PORT
+        .borrow()
+        .replace(Some(usbd_serial::SerialPort::new(usb_bus)));
+    USB_DEV.borrow().replace(Some(
+        UsbDeviceBuilder::new(usb_bus, UsbVidPid(0xABCD, 0xABCD))
+            .manufacturer("Hello rust")
+            .product("Usb device CDC example")
+            .serial_number("01-23456")
+            .device_class(usbd_serial::USB_CLASS_CDC)
+            .build(),
+    ));
 }
 
 #[entry]

@@ -5,11 +5,7 @@
 #![no_main]
 
 use core::cell::{Cell, RefCell};
-use cortex_m::{
-    asm,
-    interrupt::{free as critical_section, Mutex},
-    peripheral::syst::SystClkSource,
-};
+use cortex_m::{asm, interrupt::free as critical_section, peripheral::syst::SystClkSource};
 use cortex_m_rt::{entry, exception, ExceptionFrame};
 use hal::{
     gpio::{
@@ -21,16 +17,21 @@ use hal::{
 };
 use panic_halt as _;
 use rtt_target::{rprintln as log, rtt_init_print as log_init};
-use scheduler::non_preemptive::*;
+use scheduler::non_preemptive::{
+    resources::{Shared, UnShared},
+    *,
+};
 use scheduler_macros::*;
 use stm32f4xx_hal as hal;
 
 // Events
 const EVENT_TOGGLE_RED_LED: EventMask = 0x00000001;
 // Static and interior mutable entities
-static GREEN_LED: Mutex<RefCell<Option<PG13<Output<PushPull>>>>> = Mutex::new(RefCell::new(None));
-static RED_LED: Mutex<RefCell<Option<PG14<Output<PushPull>>>>> = Mutex::new(RefCell::new(None));
-static TIME_COUNTER: Mutex<Cell<u32>> = Mutex::new(Cell::new(0));
+static GREEN_LED: UnShared<RefCell<Option<PG13<Output<PushPull>>>>> =
+    UnShared::new(RefCell::new(None));
+static RED_LED: UnShared<RefCell<Option<PG14<Output<PushPull>>>>> =
+    UnShared::new(RefCell::new(None));
+static TIME_COUNTER: Shared<Cell<u32>> = Shared::new(Cell::new(0));
 
 // Instantiate scheduler
 const SCHEDULER_TASK_COUNT: usize = 3;
@@ -44,28 +45,22 @@ fn get_tick() -> u32 {
 
 // Functions which are bound to task runnables
 fn green_led_blinky(_: EventMask) {
-    critical_section(|cs| {
-        if let Some(led_green) = GREEN_LED.borrow(cs).borrow_mut().as_mut() {
-            led_green.toggle();
-        }
-    })
+    if let Some(led_green) = GREEN_LED.borrow().borrow_mut().as_mut() {
+        led_green.toggle();
+    }
 }
 
 fn red_led_on() {
-    critical_section(|cs| {
-        if let Some(led_red) = RED_LED.borrow(cs).borrow_mut().as_mut() {
-            led_red.set_high();
-        }
-    });
+    if let Some(led_red) = RED_LED.borrow().borrow_mut().as_mut() {
+        led_red.set_high();
+    }
 }
 
 fn red_led_blinky(event_mask: EventMask) {
     if event_mask & EVENT_TOGGLE_RED_LED != 0 {
-        critical_section(|cs| {
-            if let Some(led_red) = RED_LED.borrow(cs).borrow_mut().as_mut() {
-                led_red.toggle();
-            }
-        });
+        if let Some(led_red) = RED_LED.borrow().borrow_mut().as_mut() {
+            led_red.toggle();
+        }
     }
 }
 
@@ -94,14 +89,12 @@ fn bsp_init() {
 
     // Initialize LEDs
     let gpio_g = dp.GPIOG.split();
-    critical_section(|cs| {
-        GREEN_LED
-            .borrow(cs)
-            .replace(Some(gpio_g.pg13.into_push_pull_output()));
-        RED_LED
-            .borrow(cs)
-            .replace(Some(gpio_g.pg14.into_push_pull_output()));
-    });
+    GREEN_LED
+        .borrow()
+        .replace(Some(gpio_g.pg13.into_push_pull_output()));
+    RED_LED
+        .borrow()
+        .replace(Some(gpio_g.pg14.into_push_pull_output()));
 }
 
 #[entry]
