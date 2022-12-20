@@ -13,7 +13,7 @@ use rtt_target::rprintln as log;
 type InitRunnable = fn();
 type ProcessRunnable = fn(u32);
 type IdleRunnable = fn();
-type TimeMonitor = fn() -> u32;
+type TickGetter = fn() -> u32;
 type TaskName = &'static str;
 type TaskList<const N: usize> = Vec<Task, N>;
 pub type EventMask = u32;
@@ -64,15 +64,15 @@ impl Task {
 }
 
 pub struct Scheduler<const N: usize> {
-    time_monitor: TimeMonitor,
+    tick_getter: TickGetter,
     idle_runnable: Option<IdleRunnable>,
     task_list: TaskList<N>,
 }
 
 impl<const N: usize> Scheduler<N> {
-    pub const fn new(time_monitor: TimeMonitor) -> Scheduler<N> {
+    pub const fn new(tick_getter: TickGetter) -> Scheduler<N> {
         Scheduler {
-            time_monitor,
+            tick_getter,
             idle_runnable: None,
             task_list: TaskList::new(),
         }
@@ -95,7 +95,7 @@ impl<const N: usize> Scheduler<N> {
             if let (Some(_), Some(execution_cycle)) = (task.process_runnable, task.execution_cycle)
             {
                 task.tcb.cycle_monitor =
-                    (self.time_monitor)() + execution_cycle + task.execution_offset.unwrap_or(0);
+                    (self.tick_getter)() + execution_cycle + task.execution_offset.unwrap_or(0);
             }
         }
 
@@ -114,12 +114,12 @@ impl<const N: usize> Scheduler<N> {
                     }
                     // Execute process runnable if cycle period elapsed
                     if task.execution_cycle.is_some()
-                        && (self.time_monitor)() >= task.tcb.cycle_monitor
+                        && (self.tick_getter)() >= task.tcb.cycle_monitor
                     {
                         process_runnable(task.tcb.event_monitor);
                         // Update cycle monitor with new absolut time
                         task.tcb.cycle_monitor =
-                            (self.time_monitor)() + task.execution_cycle.unwrap();
+                            (self.tick_getter)() + task.execution_cycle.unwrap();
                     }
                 }
             }

@@ -7,21 +7,10 @@ use syn::{parse_macro_input, Expr, ExprTuple};
 
 #[proc_macro_attribute]
 pub fn scheduler_nonpreeptive(arg: TokenStream, _input: TokenStream) -> TokenStream {
-    let task_count = parse_macro_input!(arg as Expr);
+    let input = parse_macro_input!(arg as ExprTuple);
+    let (task_count, tick_getter) = (&input.elems[0], &input.elems[1]);
     let gen = quote! {
-        const TASK_COUNT: usize = #task_count;
-        static mut SCHEDULER: Option<Scheduler<TASK_COUNT>> = None;
-    };
-    gen.into()
-}
-
-#[proc_macro]
-pub fn scheduler_init(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as Expr);
-    let gen = quote! {
-        unsafe {
-            SCHEDULER.replace(Scheduler::<TASK_COUNT>::new(#input));
-        }
+        static mut SCHEDULER: Scheduler<#task_count> = Scheduler::<#task_count>::new(#tick_getter);
     };
     gen.into()
 }
@@ -30,9 +19,7 @@ pub fn scheduler_init(input: TokenStream) -> TokenStream {
 pub fn scheduler_launch(_input: TokenStream) -> TokenStream {
     let gen = quote! {
         unsafe {
-            if let Some(scheduler) = &mut SCHEDULER {
-                scheduler.launch();
-            }
+            SCHEDULER.launch()
         }
     };
     gen.into()
@@ -43,9 +30,7 @@ pub fn scheduler_add_task(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as Expr);
     let gen = quote! {
         unsafe {
-            if let Some(scheduler) = &mut SCHEDULER {
-                scheduler.add_task(#input);
-            }
+            SCHEDULER.add_task(#input);
         }
     };
     gen.into()
@@ -56,9 +41,7 @@ pub fn scheduler_register_idle_runnable(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as Expr);
     let gen = quote! {
         unsafe {
-            if let Some(scheduler) = &mut SCHEDULER {
-                scheduler.register_idle_runnable(#input);
-            }
+            SCHEDULER.register_idle_runnable(#input);
         }
     };
     gen.into()
@@ -70,9 +53,7 @@ pub fn scheduler_set_event(input: TokenStream) -> TokenStream {
     let (task_name, event) = (&input.elems[0], &input.elems[1]);
     let gen = quote! {
         unsafe {
-            if let Some(scheduler) = &mut SCHEDULER {
-               scheduler.set_event(#task_name, #event);
-            }
+            SCHEDULER.set_event(#task_name, #event);
         }
     };
     gen.into()
@@ -84,9 +65,7 @@ pub fn scheduler_clear_event(input: TokenStream) -> TokenStream {
     let (task_name, event) = (&input.elems[0], &input.elems[1]);
     let gen = quote! {
         unsafe {
-            if let Some(scheduler) = &mut SCHEDULER {
-                scheduler.clear_event(#task_name, #event)
-            }
+            SCHEDULER.clear_event(#task_name, #event)
         }
     };
     gen.into()
@@ -97,11 +76,7 @@ pub fn scheduler_get_event(input: TokenStream) -> TokenStream {
     let task_name = parse_macro_input!(input as Expr);
     let gen = quote! {
         unsafe {
-            if let Some(scheduler) = &mut SCHEDULER {
-                scheduler.get_event(#task_name)
-            } else {
-                None
-            }
+            SCHEDULER.get_event(#task_name)
         }
     };
     gen.into()
