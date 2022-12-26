@@ -2,12 +2,20 @@
 //! Basic non-preemptive scheduler to control task execution upon cycle completion
 //! and external events which could fit on basic applications
 
+#[cfg(not(feature = "core-arch"))]
+compile_error!(
+    "Core architecture feature not selected, select one of the following:
+        arm-cm
+"
+);
+
+pub mod port;
 pub mod resources;
 
 use core::str;
-use cortex_m::interrupt::free as critical_section;
 use heapless::Vec;
 use panic_halt as _;
+use port::critical_section;
 use rtt_target::rprintln as log;
 
 type InitRunnable = fn();
