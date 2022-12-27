@@ -1,19 +1,12 @@
 //! Example
 //! Usb device CDC class which makes uses of existing rust-embedded crates
 //! and non_preemptive scheduler running on a STM32F429I-DISC1 board
+
 #![no_std]
 #![no_main]
 
-use core::{
-    cell::{Cell, RefCell},
-    str::from_utf8,
-};
-use cortex_m::{
-    asm,
-    interrupt::{free as critical_section, Mutex},
-    peripheral::syst::SystClkSource,
-    singleton,
-};
+use core::{cell::RefCell, str::from_utf8};
+use cortex_m::{asm, singleton};
 use cortex_m_rt::{entry, exception, ExceptionFrame};
 use hal::{
     gpio::{gpiog::PG13, Output, PushPull, PG14},
@@ -23,10 +16,7 @@ use hal::{
 };
 use panic_halt as _;
 use rtt_target::{rprintln as log, rtt_init_print as log_init};
-use scheduler::non_preemptive::{
-    resources::{Shared, UnShared},
-    *,
-};
+use scheduler::non_preemptive::{resources::UnShared, *};
 use scheduler_macros::*;
 use stm32f4xx_hal as hal;
 use usb_device::{class_prelude::*, prelude::*};
@@ -44,7 +34,6 @@ static USB_SERIAL_PORT: UnShared<RefCell<Option<SerialPort<UsbBus<USB>>>>> =
     UnShared::new(RefCell::new(None));
 static USB_DEV: UnShared<RefCell<Option<UsbDevice<UsbBus<USB>>>>> =
     UnShared::new(RefCell::new(None));
-static TIME_COUNTER: Shared<Cell<u32>> = Mutex::new(Cell::new(0));
 // Static mutable entities
 const USB_BUS_BUFFER_SIZE: usize = 512;
 static mut USB_BUS_BUFFER: [u32; USB_BUS_BUFFER_SIZE] = [0u32; USB_BUS_BUFFER_SIZE];
@@ -53,13 +42,8 @@ static mut USB_APP_BUFFER: [u8; USB_APP_BUFFER_SIZE] = [0u8; USB_APP_BUFFER_SIZE
 
 // Instantiate scheduler
 const SCHEDULER_TASK_COUNT: usize = 2;
-#[scheduler_nonpreeptive((SCHEDULER_TASK_COUNT, get_tick))]
+#[scheduler_nonpreeptive((SCHEDULER_TASK_COUNT, 180_000_000))]
 struct Scheduler;
-
-// Tick getter needed by the scheduler
-fn get_tick() -> u32 {
-    critical_section(|cs| TIME_COUNTER.borrow(cs).get())
-}
 
 // Functions which are bound to task runnables
 fn usb_process(_: EventMask) {
@@ -132,7 +116,6 @@ fn led_handler(event_mask: EventMask) {
 
 // BSP initialization
 fn bsp_init() {
-    let cp = cortex_m::Peripherals::take().unwrap();
     let dp = pac::Peripherals::take().unwrap();
 
     let rcc = dp.RCC.constrain();
@@ -150,12 +133,6 @@ fn bsp_init() {
     if !clks.is_pll48clk_valid() {
         panic!("USB clock invalid!");
     }
-
-    let mut systick = cp.SYST;
-    systick.set_clock_source(SystClkSource::Core);
-    systick.set_reload(180_000); // 1ms tick
-    systick.enable_counter();
-    systick.enable_interrupt();
 
     // Initialize LEDs
     let gpio_g = dp.GPIOG.split();
@@ -223,14 +200,6 @@ fn main() -> ! {
     loop {
         panic!();
     }
-}
-
-#[exception]
-fn SysTick() {
-    critical_section(|cs| {
-        let scheduler_counter = TIME_COUNTER.borrow(cs).get();
-        TIME_COUNTER.borrow(cs).set(scheduler_counter + 1);
-    })
 }
 
 #[exception]

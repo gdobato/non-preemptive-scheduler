@@ -8,9 +8,9 @@ use syn::{parse_macro_input, Expr, ExprTuple};
 #[proc_macro_attribute]
 pub fn scheduler_nonpreeptive(arg: TokenStream, _input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(arg as ExprTuple);
-    let (task_count, tick_getter) = (&input.elems[0], &input.elems[1]);
+    let (task_count, core_freq) = (&input.elems[0], &input.elems[1]);
     let gen = quote! {
-        static mut SCHEDULER: Scheduler<#task_count> = Scheduler::<#task_count>::new(#tick_getter);
+        static mut SCHEDULER: Scheduler<#task_count> = Scheduler::<#task_count>::new(#core_freq);
     };
     gen.into()
 }

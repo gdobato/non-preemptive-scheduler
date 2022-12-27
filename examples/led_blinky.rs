@@ -1,11 +1,12 @@
 //! Example
 //! Simple LED Blinky implementation which makes use of rust-embedded crates
 //! and non_preemptive scheduler to blink a couple of leds on a STM32F429I-DISC1 board
+
 #![no_std]
 #![no_main]
 
-use core::cell::{Cell, RefCell};
-use cortex_m::{asm, interrupt::free as critical_section, peripheral::syst::SystClkSource};
+use core::cell::RefCell;
+use cortex_m::asm;
 use cortex_m_rt::{entry, exception, ExceptionFrame};
 use hal::{
     gpio::{
@@ -17,10 +18,7 @@ use hal::{
 };
 use panic_halt as _;
 use rtt_target::{rprintln as log, rtt_init_print as log_init};
-use scheduler::non_preemptive::{
-    resources::{Shared, UnShared},
-    *,
-};
+use scheduler::non_preemptive::{resources::UnShared, *};
 use scheduler_macros::*;
 use stm32f4xx_hal as hal;
 
@@ -31,17 +29,11 @@ static GREEN_LED: UnShared<RefCell<Option<PG13<Output<PushPull>>>>> =
     UnShared::new(RefCell::new(None));
 static RED_LED: UnShared<RefCell<Option<PG14<Output<PushPull>>>>> =
     UnShared::new(RefCell::new(None));
-static TIME_COUNTER: Shared<Cell<u32>> = Shared::new(Cell::new(0));
 
 // Instantiate scheduler
 const SCHEDULER_TASK_COUNT: usize = 3;
-#[scheduler_nonpreeptive((SCHEDULER_TASK_COUNT, get_tick))]
+#[scheduler_nonpreeptive((SCHEDULER_TASK_COUNT, 180_000_000))]
 struct Scheduler;
-
-// Tick getter needed by the scheduler
-fn get_tick() -> u32 {
-    critical_section(|cs| TIME_COUNTER.borrow(cs).get())
-}
 
 // Functions which are bound to task runnables
 fn green_led_blinky(_: EventMask) {
@@ -71,7 +63,6 @@ fn red_led_switcher(_: EventMask) {
 
 // BSP initialization
 fn bsp_init() {
-    let cp = cortex_m::Peripherals::take().unwrap();
     let dp = pac::Peripherals::take().unwrap();
 
     dp.RCC
@@ -80,12 +71,6 @@ fn bsp_init() {
         .use_hse(8.MHz())
         .sysclk(180.MHz())
         .freeze();
-
-    let mut systick = cp.SYST;
-    systick.set_clock_source(SystClkSource::Core);
-    systick.set_reload(180_000); // 1ms tick
-    systick.enable_counter();
-    systick.enable_interrupt();
 
     // Initialize LEDs
     let gpio_g = dp.GPIOG.split();
@@ -108,8 +93,8 @@ fn main() -> ! {
         "green_led_blinky",     // Task name
         None,                   // Init runnable
         Some(green_led_blinky), // Process runnable
-        Some(250),              // Execution cycle
-        None,                   // Execution offset
+        Some(1000),             // Execution cycle
+        Some(3),                // Execution offset
     );
 
     let red_led_switcher_task = Task::new(
@@ -117,7 +102,7 @@ fn main() -> ! {
         None,
         Some(red_led_switcher),
         Some(1000),
-        Some(10),
+        Some(5),
     );
 
     let red_led_blinky_task = Task::new(
@@ -142,14 +127,6 @@ fn main() -> ! {
     loop {
         panic!();
     }
-}
-
-#[exception]
-fn SysTick() {
-    critical_section(|cs| {
-        let scheduler_counter = TIME_COUNTER.borrow(cs).get();
-        TIME_COUNTER.borrow(cs).set(scheduler_counter + 1);
-    })
 }
 
 #[exception]
