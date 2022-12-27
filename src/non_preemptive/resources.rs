@@ -1,7 +1,7 @@
 //! Abstractions to handle static resources
 
+use crate::non_preemptive::port::Mutex;
 use core::cell::UnsafeCell;
-use cortex_m::interrupt::Mutex;
 
 /// UnsafeCell wrapper for resources which are shared between
 /// different execution contexts.

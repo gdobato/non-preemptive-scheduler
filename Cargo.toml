@@ -16,9 +16,10 @@ stm32f4xx-hal = { git = "https://github.com/stm32-rs/stm32f4xx-hal", branch = "m
 scheduler-macros = { path = "macros", version = "0.1.0" }
 usb-device = "0.2.9"
 usbd-serial = "0.1.1"
+volatile-register = "0.2.0"
 
 [features]
 default = ["arm-cm"]
-core-arch = []
-arm-cm = ["core-arch"]
-risc-v = ["core-arch"]
+core = []
+arm-cm = ["core"]
+risc-v = ["core"]

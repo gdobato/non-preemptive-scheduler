@@ -2,26 +2,24 @@
 //! Basic non-preemptive scheduler to control task execution upon cycle completion
 //! and external events which could fit on basic applications
 
-#[cfg(not(feature = "core-arch"))]
+#[cfg(not(feature = "core"))]
 compile_error!(
     "Core architecture feature not selected, select one of the following:
         arm-cm
 "
 );
 
-pub mod port;
+mod port;
 pub mod resources;
 
 use core::str;
 use heapless::Vec;
 use panic_halt as _;
-use port::critical_section;
-use rtt_target::rprintln as log;
+use port::{critical_section, log, SysTick};
 
 type InitRunnable = fn();
 type ProcessRunnable = fn(u32);
 type IdleRunnable = fn();
-type TickGetter = fn() -> u32;
 type TaskName = &'static str;
 type TaskList<const N: usize> = Vec<Task, N>;
 pub type EventMask = u32;
@@ -72,15 +70,15 @@ impl Task {
 }
 
 pub struct Scheduler<const N: usize> {
-    tick_getter: TickGetter,
+    core_freq: u32,
     idle_runnable: Option<IdleRunnable>,
     task_list: TaskList<N>,
 }
 
 impl<const N: usize> Scheduler<N> {
-    pub const fn new(tick_getter: TickGetter) -> Scheduler<N> {
+    pub const fn new(core_freq: u32) -> Scheduler<N> {
         Scheduler {
-            tick_getter,
+            core_freq,
             idle_runnable: None,
             task_list: TaskList::new(),
         }
@@ -91,6 +89,9 @@ impl<const N: usize> Scheduler<N> {
     }
 
     pub fn launch(&mut self) {
+        let systick = SysTick::take().unwrap();
+        systick.launch(self.core_freq);
+
         for task in self.task_list.iter_mut() {
             log!("Launching task {}", task.name);
 
@@ -103,14 +104,21 @@ impl<const N: usize> Scheduler<N> {
             if let (Some(_), Some(execution_cycle)) = (task.process_runnable, task.execution_cycle)
             {
                 task.tcb.cycle_monitor =
-                    (self.tick_getter)() + execution_cycle + task.execution_offset.unwrap_or(0);
+                    systick.get() + execution_cycle + task.execution_offset.unwrap_or(0);
             }
         }
 
         // Main endless super loop
         loop {
+            let mut task_execution = false;
             for task in self.task_list.iter_mut() {
+                let mut cyclic_execution = false;
                 if let Some(process_runnable) = task.process_runnable {
+                    // Update cycle monitor with new absolut time
+                    if task.execution_cycle.is_some() && systick.get() >= task.tcb.cycle_monitor {
+                        task.tcb.cycle_monitor = systick.get() + task.execution_cycle.unwrap();
+                        cyclic_execution = true;
+                    }
                     // Execute process runnable if any event set
                     if task.tcb.event_monitor != 0 {
                         let mut event_mask = 0;
@@ -119,22 +127,20 @@ impl<const N: usize> Scheduler<N> {
                             task.tcb.event_monitor = 0;
                         });
                         process_runnable(event_mask);
+                        task_execution = true;
                     }
                     // Execute process runnable if cycle period elapsed
-                    if task.execution_cycle.is_some()
-                        && (self.tick_getter)() >= task.tcb.cycle_monitor
-                    {
-                        process_runnable(task.tcb.event_monitor);
-                        // Update cycle monitor with new absolut time
-                        task.tcb.cycle_monitor =
-                            (self.tick_getter)() + task.execution_cycle.unwrap();
+                    if cyclic_execution {
+                        process_runnable(0);
+                        task_execution = true;
                     }
                 }
             }
-
-            // Execute idle runnable if registered
+            // Execute idle runnable if registered and there was no execution
             if let Some(idle_runnable) = self.idle_runnable {
-                idle_runnable();
+                if !task_execution {
+                    idle_runnable();
+                }
             }
         }
     }
