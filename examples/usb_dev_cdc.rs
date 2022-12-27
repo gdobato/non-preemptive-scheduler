@@ -1,5 +1,5 @@
 //! Example
-//! Usb device CDC class which makes uses of existing rust-embedded crates
+//! Usb device CDC class which makes use of existing rust-embedded crates
 //! and non_preemptive scheduler running on a STM32F429I-DISC1 board
 
 #![no_std]
@@ -41,8 +41,7 @@ const USB_APP_BUFFER_SIZE: usize = 64;
 static mut USB_APP_BUFFER: [u8; USB_APP_BUFFER_SIZE] = [0u8; USB_APP_BUFFER_SIZE];
 
 // Instantiate scheduler
-const SCHEDULER_TASK_COUNT: usize = 2;
-#[scheduler_nonpreeptive((SCHEDULER_TASK_COUNT, 180_000_000))]
+#[scheduler(task_count = 2, core_freq = 180_000_000)]
 struct Scheduler;
 
 // Functions which are bound to task runnables
@@ -76,13 +75,13 @@ fn usb_process(_: EventMask) {
         match usb_dev.state() {
             // Transition to enumeration
             UsbDeviceState::Configured if previous_state == UsbDeviceState::Addressed => {
-                scheduler_set_event!(("led_handler", EVENT_USB_ENUMERATION));
+                set_task_event!("led_handler", EVENT_USB_ENUMERATION);
             }
             // Already enumerated
             UsbDeviceState::Configured => {}
             // Enumeration lost
             _ if previous_state == UsbDeviceState::Configured => {
-                scheduler_set_event!(("led_handler", EVENT_USB_ENUMERATION_LOST));
+                set_task_event!("led_handler", EVENT_USB_ENUMERATION_LOST);
             }
             _ => (),
         }
@@ -179,20 +178,16 @@ fn main() -> ! {
 
     bsp_init();
 
-    // Create tasks
-    let usb_echo_task = Task::new(
+    // Create and add tasks
+    add_task!(
         "usb_echo",        // Task name
         None,              // Init runnable
         Some(usb_process), // Process runnable
         Some(10),          // Execution cycle
-        None,              // Execution offset
+        None               // Execution offset
     );
 
-    let led_handler_task = Task::new("led_handler", None, Some(led_handler), Some(500), None);
-
-    // Add tasks to scheduler
-    scheduler_add_task!(usb_echo_task);
-    scheduler_add_task!(led_handler_task);
+    add_task!("led_handler", None, Some(led_handler), Some(500), None);
 
     // Launch scheduler
     scheduler_launch!();

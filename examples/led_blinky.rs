@@ -31,8 +31,7 @@ static RED_LED: UnShared<RefCell<Option<PG14<Output<PushPull>>>>> =
     UnShared::new(RefCell::new(None));
 
 // Instantiate scheduler
-const SCHEDULER_TASK_COUNT: usize = 3;
-#[scheduler_nonpreeptive((SCHEDULER_TASK_COUNT, 180_000_000))]
+#[scheduler(task_count = 3, core_freq = 180_000_000)]
 struct Scheduler;
 
 // Functions which are bound to task runnables
@@ -58,7 +57,7 @@ fn red_led_blinky(event_mask: EventMask) {
 
 fn red_led_switcher(_: EventMask) {
     // Set event on red_led_blinky task
-    scheduler_set_event!(("red_led_blinky", EVENT_TOGGLE_RED_LED));
+    set_task_event!("red_led_blinky", EVENT_TOGGLE_RED_LED);
 }
 
 // BSP initialization
@@ -88,38 +87,33 @@ fn main() -> ! {
 
     bsp_init();
 
-    // Create tasks
-    let green_led_blinky_task = Task::new(
+    // Create and add tasks
+    add_task!(
         "green_led_blinky",     // Task name
         None,                   // Init runnable
         Some(green_led_blinky), // Process runnable
         Some(1000),             // Execution cycle
-        Some(3),                // Execution offset
+        Some(3)                 // Execution offset
     );
 
-    let red_led_switcher_task = Task::new(
+    add_task!(
         "red_led_switcher",
         None,
         Some(red_led_switcher),
         Some(1000),
-        Some(5),
+        Some(5)
     );
 
-    let red_led_blinky_task = Task::new(
+    add_task!(
         "red_led_blinky",
         Some(red_led_on),
         Some(red_led_blinky),
         None,
-        None,
+        None
     );
 
-    // Add tasks to scheduler
-    scheduler_add_task!(green_led_blinky_task);
-    scheduler_add_task!(red_led_switcher_task);
-    scheduler_add_task!(red_led_blinky_task);
-
     // Register idle runnable
-    scheduler_register_idle_runnable!(asm::nop);
+    register_idle_runnable!(asm::nop);
 
     // Launch scheduler
     scheduler_launch!();
