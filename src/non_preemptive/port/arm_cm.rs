@@ -8,7 +8,6 @@ use cortex_m_rt::exception;
 use volatile_register::RW;
 
 static mut TICK: u32 = 0;
-static mut TAKEN: bool = false;
 
 pub struct SysTick;
 
@@ -20,6 +19,7 @@ impl SysTick {
     const SYST_CSR_TICK_PROCESSOR_AS_CLCK_SOURCE: u32 = 1 << 2;
 
     pub fn take() -> Option<SysTick> {
+        static mut TAKEN: bool = false;
         critical_section(|_| {
             if unsafe { !TAKEN } {
                 unsafe {
