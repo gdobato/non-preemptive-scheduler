@@ -60,25 +60,16 @@ impl Task {
             },
         }
     }
-
-    #[inline]
-    pub fn set_event(&mut self, event: EventMask) {
-        critical_section(|_| {
-            self.tcb.event_monitor = event;
-        })
-    }
 }
 
-pub struct Scheduler<const N: usize> {
-    core_freq: u32,
+pub struct Scheduler<const TASK_COUNT: usize, const CORE_FREQ: u32> {
     idle_runnable: Option<IdleRunnable>,
-    task_list: TaskList<N>,
+    task_list: TaskList<TASK_COUNT>,
 }
 
-impl<const N: usize> Scheduler<N> {
-    pub const fn new(core_freq: u32) -> Scheduler<N> {
+impl<const TASK_COUNT: usize, const CORE_FREQ: u32> Scheduler<TASK_COUNT, CORE_FREQ> {
+    pub const fn new() -> Scheduler<TASK_COUNT, CORE_FREQ> {
         Scheduler {
-            core_freq,
             idle_runnable: None,
             task_list: TaskList::new(),
         }
@@ -89,8 +80,8 @@ impl<const N: usize> Scheduler<N> {
     }
 
     pub fn launch(&mut self) {
-        let systick = SysTick::take().unwrap();
-        systick.launch(self.core_freq);
+        let systick = SysTick::bind_with_core_and_take(CORE_FREQ).unwrap();
+        systick.launch();
 
         for task in self.task_list.iter_mut() {
             log!("Launching task {}", task.name);
@@ -151,21 +142,21 @@ impl<const N: usize> Scheduler<N> {
     }
 
     #[inline]
-    pub fn set_event(&mut self, name: &str, event: u32) {
+    pub fn set_task_event(&mut self, name: &str, event: u32) {
         if let Some(task) = self.task_list.iter_mut().find(|task| task.name == name) {
             critical_section(|_| task.tcb.event_monitor |= event);
         }
     }
 
     #[inline]
-    pub fn clear_event(&mut self, name: &str, event: u32) {
+    pub fn clear_task_event(&mut self, name: &str, event: u32) {
         if let Some(task) = self.task_list.iter_mut().find(|task| task.name == name) {
             critical_section(|_| task.tcb.event_monitor &= !event);
         }
     }
 
     #[inline]
-    pub fn get_event(&mut self, name: &str) -> Option<u32> {
+    pub fn get_task_event(&mut self, name: &str) -> Option<u32> {
         if let Some(task) = self.task_list.iter_mut().find(|task| task.name == name) {
             critical_section(|_| Some(task.tcb.event_monitor))
         } else {
