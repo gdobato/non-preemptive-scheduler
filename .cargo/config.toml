@@ -7,6 +7,4 @@ runner = 'probe-run --chip STM32F429ZITx'
 rustflags = [
   # Use LLD as the default linker
   "-C", "link-arg=-Tlink.x",
-  # Warnings as erros
-  "-D", "warnings"
 ]
