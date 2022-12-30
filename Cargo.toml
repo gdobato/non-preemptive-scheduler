@@ -1,22 +1,23 @@
 [package]
-name = "scheduler"
+name = "non-preemptive-scheduler"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 cortex-m = "0.7"
 cortex-m-rt = "0.7"
-embedded-hal = "0.2"
 heapless = "0.7.15"
+rtt-target = { version = "0.3.0", features = ["cortex-m"] }
+non-preemptive-scheduler-macros = { path = "macros", version = "0.1.0" }
+volatile-register = "0.2.0"
+
+[dev-dependencies]
+embedded-hal = "0.2"
 nb = "1"
 panic-halt = "0.2.0"
-rtt-target = { version = "0.3.0", features = ["cortex-m"] }
-# Official crate 13.0.2 does not contain yet some adaptations needed for otg-hs
-stm32f4xx-hal = { git = "https://github.com/stm32-rs/stm32f4xx-hal", branch = "master", features = ["stm32f429", "usb_hs", "otg-hs"] }
-scheduler-macros = { path = "macros", version = "0.1.0" }
+stm32f4xx-hal = { version = "0.14.0", features = ["stm32f429", "usb_hs", "otg-hs"] }
 usb-device = "0.2.9"
 usbd-serial = "0.1.1"
-volatile-register = "0.2.0"
 
 [features]
 default = ["arm-cm"]

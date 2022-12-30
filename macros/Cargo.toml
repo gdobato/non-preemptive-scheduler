@@ -1,5 +1,5 @@
 [package]
-name = "scheduler-macros"
+name = "non-preemptive-scheduler-macros"
 version = "0.1.0"
 edition = "2021"
 

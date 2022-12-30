@@ -16,10 +16,10 @@ use hal::{
     pac,
     prelude::*,
 };
+use non_preemptive_scheduler::{resources::UnShared, EventMask, Scheduler, Task};
+use non_preemptive_scheduler_macros as scheduler;
 use panic_halt as _;
 use rtt_target::{rprintln as log, rtt_init_print as log_init};
-use scheduler::non_preemptive::{resources::UnShared, *};
-use scheduler_macros::*;
 use stm32f4xx_hal as hal;
 
 // Events
@@ -30,9 +30,9 @@ static GREEN_LED: UnShared<RefCell<Option<PG13<Output<PushPull>>>>> =
 static RED_LED: UnShared<RefCell<Option<PG14<Output<PushPull>>>>> =
     UnShared::new(RefCell::new(None));
 
-// Instantiate scheduler
-#[scheduler(task_count = 3, core_freq = 180_000_000)]
-struct Scheduler;
+// Create scheduler
+#[scheduler::new(task_count = 3, core_freq = 180_000_000)]
+struct NonPreemptiveScheduler;
 
 // Functions which are bound to task runnables
 fn green_led_blinky(_: EventMask) {
@@ -57,7 +57,7 @@ fn red_led_blinky(event_mask: EventMask) {
 
 fn red_led_switcher(_: EventMask) {
     // Set event on red_led_blinky task
-    set_task_event!("red_led_blinky", EVENT_TOGGLE_RED_LED);
+    scheduler::set_task_event!("red_led_blinky", EVENT_TOGGLE_RED_LED);
 }
 
 // BSP initialization
@@ -88,23 +88,23 @@ fn main() -> ! {
     bsp_init();
 
     // Create and add tasks
-    add_task!(
+    scheduler::add_task!(
         "green_led_blinky",     // Task name
         None,                   // Init runnable
         Some(green_led_blinky), // Process runnable
-        Some(1000),             // Execution cycle
+        Some(1_000),            // Execution cycle
         Some(3)                 // Execution offset
     );
 
-    add_task!(
+    scheduler::add_task!(
         "red_led_switcher",
         None,
         Some(red_led_switcher),
-        Some(1000),
+        Some(1_000),
         Some(5)
     );
 
-    add_task!(
+    scheduler::add_task!(
         "red_led_blinky",
         Some(red_led_on),
         Some(red_led_blinky),
@@ -112,14 +112,14 @@ fn main() -> ! {
         None
     );
 
-    // Register idle runnable
-    register_idle_runnable!(asm::nop);
+    // Register idle runnable (optional)
+    scheduler::register_idle_runnable!(asm::nop);
 
     // Launch scheduler
-    scheduler_launch!();
+    scheduler::launch!();
 
     loop {
-        panic!();
+        panic!("Not expected execution");
     }
 }
 

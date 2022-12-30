@@ -49,7 +49,7 @@ impl Parse for Task {
 }
 
 #[proc_macro_attribute]
-pub fn scheduler(args: TokenStream, _input: TokenStream) -> TokenStream {
+pub fn new(args: TokenStream, _input: TokenStream) -> TokenStream {
     let args = parse_macro_input!(args as AttributeArgs);
     let (mut task_count, mut core_freq) = (None, None);
 
@@ -67,6 +67,8 @@ pub fn scheduler(args: TokenStream, _input: TokenStream) -> TokenStream {
                         }
                         _ => panic!("Unrecognized argument: {}", name),
                     }
+                } else {
+                    panic!("Attribute must be a name value pair");
                 }
             }
             _ => panic!("Unexpected argument type"),
@@ -82,7 +84,7 @@ pub fn scheduler(args: TokenStream, _input: TokenStream) -> TokenStream {
 }
 
 #[proc_macro]
-pub fn scheduler_launch(_input: TokenStream) -> TokenStream {
+pub fn launch(_input: TokenStream) -> TokenStream {
     let gen = quote! {
         unsafe {
             SCHEDULER.launch()
