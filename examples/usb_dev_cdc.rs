@@ -14,10 +14,10 @@ use hal::{
     pac::{self},
     prelude::*,
 };
+use non_preemptive_scheduler::{resources::UnShared, EventMask, Scheduler, Task};
+use non_preemptive_scheduler_macros as scheduler;
 use panic_halt as _;
 use rtt_target::{rprintln as log, rtt_init_print as log_init};
-use scheduler::non_preemptive::{resources::UnShared, *};
-use scheduler_macros::*;
 use stm32f4xx_hal as hal;
 use usb_device::{class_prelude::*, prelude::*};
 use usbd_serial::SerialPort;
@@ -40,9 +40,9 @@ static mut USB_BUS_BUFFER: [u32; USB_BUS_BUFFER_SIZE] = [0u32; USB_BUS_BUFFER_SI
 const USB_APP_BUFFER_SIZE: usize = 64;
 static mut USB_APP_BUFFER: [u8; USB_APP_BUFFER_SIZE] = [0u8; USB_APP_BUFFER_SIZE];
 
-// Instantiate scheduler
-#[scheduler(task_count = 2, core_freq = 180_000_000)]
-struct Scheduler;
+// Create scheduler
+#[scheduler::new(task_count = 2, core_freq = 180_000_000)]
+struct NonPreemptiveScheduler;
 
 // Functions which are bound to task runnables
 fn usb_process(_: EventMask) {
@@ -75,13 +75,13 @@ fn usb_process(_: EventMask) {
         match usb_dev.state() {
             // Transition to enumeration
             UsbDeviceState::Configured if previous_state == UsbDeviceState::Addressed => {
-                set_task_event!("led_handler", EVENT_USB_ENUMERATION);
+                scheduler::set_task_event!("led_handler", EVENT_USB_ENUMERATION);
             }
             // Already enumerated
             UsbDeviceState::Configured => {}
             // Enumeration lost
             _ if previous_state == UsbDeviceState::Configured => {
-                set_task_event!("led_handler", EVENT_USB_ENUMERATION_LOST);
+                scheduler::set_task_event!("led_handler", EVENT_USB_ENUMERATION_LOST);
             }
             _ => (),
         }
@@ -179,7 +179,7 @@ fn main() -> ! {
     bsp_init();
 
     // Create and add tasks
-    add_task!(
+    scheduler::add_task!(
         "usb_echo",        // Task name
         None,              // Init runnable
         Some(usb_process), // Process runnable
@@ -187,13 +187,13 @@ fn main() -> ! {
         None               // Execution offset
     );
 
-    add_task!("led_handler", None, Some(led_handler), Some(500), None);
+    scheduler::add_task!("led_handler", None, Some(led_handler), Some(500), None);
 
     // Launch scheduler
-    scheduler_launch!();
+    scheduler::launch!();
 
     loop {
-        panic!();
+        panic!("Not expected execution");
     }
 }
 
