@@ -106,8 +106,20 @@ impl<const TASK_COUNT: usize, const CORE_FREQ: u32> Scheduler<TASK_COUNT, CORE_F
 
     pub fn add_task(&mut self, task: Task) {
         #[cfg(debug_assertions)]
-        log!("Adding task {} to scheduler: \n - init runnable: {:?}\n - process runnable: {:?}\n - execution cycle: {:?}\n - execution offset: {:?}", task.name, task.init_runnable, task.process_runnable, task.execution_cycle, task.execution_offset);
-        if let Err(task) = self.task_list.push(self.panic_if_task_has_duplicates(task)) {
+        log!(
+            "Adding task {} to scheduler: \n \
+              - init runnable: {:?}\n \
+              - process runnable: {:?}\n \
+              - execution cycle: {:?}\n \
+              - execution offset: {:?}",
+            task.name,
+            task.init_runnable,
+            task.process_runnable,
+            task.execution_cycle,
+            task.execution_offset
+        );
+        self.check_if_task_has_duplicates(&task);
+        if let Err(task) = self.task_list.push(task) {
             panic!("Task {} cannot be added, task list already full", task.name);
         }
     }
@@ -140,9 +152,11 @@ impl<const TASK_COUNT: usize, const CORE_FREQ: u32> Scheduler<TASK_COUNT, CORE_F
                 let mut cyclic_execution = false;
                 if let Some(process_runnable) = task.process_runnable {
                     // Update cycle monitor with new absolut time
-                    if task.execution_cycle.is_some() && systick.get() >= task.tcb.cycle_monitor {
-                        task.tcb.cycle_monitor = systick.get() + task.execution_cycle.unwrap();
-                        cyclic_execution = true;
+                    if let Some(execution_cycle) = task.execution_cycle {
+                        if systick.get() >= task.tcb.cycle_monitor {
+                            task.tcb.cycle_monitor = systick.get() + execution_cycle;
+                            cyclic_execution = true;
+                        }
                     }
                     // Execute process runnable if any event set
                     if task.tcb.event_monitor != 0 {
@@ -198,12 +212,15 @@ impl<const TASK_COUNT: usize, const CORE_FREQ: u32> Scheduler<TASK_COUNT, CORE_F
         }
     }
 
-    fn panic_if_task_has_duplicates(&self, task: Task) -> Task {
+    fn check_if_task_has_duplicates(&self, task: &Task) {
         for added_task in self.task_list.iter() {
             if task.has_duplicates_of(added_task) {
-                panic!("Task {} has either same name, or init runnable: {:?} or process runnable: {:?} than already added task {}", task.name, task.init_runnable, task.process_runnable, added_task.name);
+                panic!(
+                    "Task {} has either same name or init runnable: {:?} \
+                    or process runnable: {:?} than an already added task {}",
+                    task.name, task.init_runnable, task.process_runnable, added_task.name
+                );
             }
         }
-        task
     }
 }
