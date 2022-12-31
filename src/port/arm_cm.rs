@@ -1,7 +1,12 @@
 //! Abstractions for Arm Cortex-M
 
+use core::panic::PanicInfo;
+#[cfg(debug_assertions)]
+use cortex_m::asm::bkpt;
 use cortex_m::interrupt::free as critical_section;
 use cortex_m_rt::exception;
+#[cfg(debug_assertions)]
+use rtt_target::rprintln as log;
 use volatile_register::RW;
 
 static mut TICK: u32 = 0;
@@ -53,5 +58,17 @@ impl SysTick {
 fn SysTick() {
     unsafe {
         TICK += 1;
+    }
+}
+
+#[inline(never)]
+#[panic_handler]
+#[allow(unused_variables)]
+fn panic(info: &PanicInfo) -> ! {
+    #[cfg(debug_assertions)]
+    log!("{}", info);
+    loop {
+        #[cfg(debug_assertions)]
+        bkpt();
     }
 }

@@ -2,7 +2,7 @@
 //! Basic non-preemptive scheduler to control task execution upon cycle completion
 //! and external events which could fit on basic applications
 
-#![no_std]
+#![cfg_attr(not(test), no_std)]
 
 #[cfg(not(feature = "core"))]
 compile_error!(
@@ -222,5 +222,87 @@ impl<const TASK_COUNT: usize, const CORE_FREQ: u32> Scheduler<TASK_COUNT, CORE_F
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const DUMMY_CORE_FREQ: u32 = 100_000_000;
+
+    #[test]
+    fn task_event_handling() {
+        const TASK_COUNT: usize = 1;
+        const TASK_NAME: &str = "Dummy task";
+        const TASK_EVENT1: EventMask = 0x00000001;
+        const TASK_EVENT2: EventMask = 0x00000002;
+
+        let mut scheduler: Scheduler<TASK_COUNT, DUMMY_CORE_FREQ> = Scheduler::new();
+        let task = Task::new(TASK_NAME, None, None, None, None);
+
+        let task_event_mask = scheduler.get_task_event(TASK_NAME);
+        assert_eq!(task_event_mask, None);
+
+        scheduler.add_task(task);
+
+        let task_event_mask = scheduler.get_task_event(TASK_NAME);
+        assert_eq!(task_event_mask, Some(0));
+
+        scheduler.set_task_event(TASK_NAME, TASK_EVENT1 | TASK_EVENT2);
+        let task_event_mask = scheduler.get_task_event(TASK_NAME);
+        assert_eq!(task_event_mask, Some(TASK_EVENT1 | TASK_EVENT2));
+    }
+
+    #[test]
+    #[should_panic]
+    fn task_name_dupplication() {
+        const TASK_COUNT: usize = 2;
+        let mut scheduler: Scheduler<TASK_COUNT, DUMMY_CORE_FREQ> = Scheduler::new();
+        let task1 = Task::new("Dummy task 1", None, None, None, None);
+        let task2 = Task::new("Dummy task 1", None, None, None, None);
+
+        scheduler.add_task(task1);
+        scheduler.add_task(task2);
+    }
+
+    #[test]
+    #[should_panic]
+    fn task_init_runnable_dupplication() {
+        const TASK_COUNT: usize = 2;
+        fn dummy_init_runnable() {}
+
+        let mut scheduler: Scheduler<TASK_COUNT, DUMMY_CORE_FREQ> = Scheduler::new();
+        let task1 = Task::new("Dummy task 1", Some(dummy_init_runnable), None, None, None);
+        let task2 = Task::new("Dummy task 2", Some(dummy_init_runnable), None, None, None);
+
+        scheduler.add_task(task1);
+        scheduler.add_task(task2);
+    }
+
+    #[test]
+    #[should_panic]
+    fn task_process_runnable_dupplication() {
+        const TASK_COUNT: usize = 2;
+        fn dummy_process_runnable(_event_mask: EventMask) {}
+
+        let mut scheduler: Scheduler<TASK_COUNT, DUMMY_CORE_FREQ> = Scheduler::new();
+        let task1 = Task::new(
+            "Dummy task 1",
+            None,
+            Some(dummy_process_runnable),
+            None,
+            None,
+        );
+        let task2 = Task::new(
+            "Dummy task 2",
+            None,
+            Some(dummy_process_runnable),
+            None,
+            None,
+        );
+
+        scheduler.add_task(task1);
+        scheduler.add_task(task2);
     }
 }
