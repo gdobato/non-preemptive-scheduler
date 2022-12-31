@@ -256,7 +256,7 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn task_name_dupplication() {
+    fn task_name_duplication() {
         const TASK_COUNT: usize = 2;
         let mut scheduler: Scheduler<TASK_COUNT, DUMMY_CORE_FREQ> = Scheduler::new();
         let task1 = Task::new("Dummy task 1", None, None, None, None);
@@ -268,7 +268,7 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn task_init_runnable_dupplication() {
+    fn task_init_runnable_duplication() {
         const TASK_COUNT: usize = 2;
         fn dummy_init_runnable() {}
 
@@ -282,7 +282,7 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn task_process_runnable_dupplication() {
+    fn task_process_runnable_duplication() {
         const TASK_COUNT: usize = 2;
         fn dummy_process_runnable(_event_mask: EventMask) {}
 
