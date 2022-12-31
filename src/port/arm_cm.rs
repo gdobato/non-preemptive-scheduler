@@ -1,9 +1,6 @@
-pub use cortex_m::{
-    interrupt::{free as critical_section, Mutex},
-    peripheral,
-};
-pub use rtt_target::rprintln as log;
+//! Abstractions for Arm Cortex-M
 
+use cortex_m::interrupt::free as critical_section;
 use cortex_m_rt::exception;
 use volatile_register::RW;
 
@@ -36,7 +33,7 @@ impl SysTick {
     pub fn launch(&self) {
         unsafe {
             (*Self::SYST_CSR).modify(|v| v & !Self::SYST_CSR_COUNTER_ENABLE);
-            (*Self::SYST_RVR).write((self.core_freq / 1000) - 1); // 1ms
+            (*Self::SYST_RVR).write((self.core_freq / 1_000) - 1); // 1ms
         }
         unsafe {
             (*Self::SYST_CSR).modify(|v| {

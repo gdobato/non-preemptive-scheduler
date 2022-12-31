@@ -18,7 +18,6 @@ use hal::{
 };
 use non_preemptive_scheduler::{resources::UnShared, EventMask, Scheduler, Task};
 use non_preemptive_scheduler_macros as scheduler;
-use panic_halt as _;
 use rtt_target::{rprintln as log, rtt_init_print as log_init};
 use stm32f4xx_hal as hal;
 
