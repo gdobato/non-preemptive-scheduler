@@ -16,14 +16,16 @@ pub mod resources;
 
 use core::str;
 use heapless::Vec;
-use port::{critical_section, log, SysTick};
+#[cfg(debug_assertions)]
+use port::log;
+use port::{critical_section, SysTick};
 
-type InitRunnable = fn();
-type ProcessRunnable = fn(u32);
-type IdleRunnable = fn();
-type TaskName = &'static str;
-type TaskList<const N: usize> = Vec<Task, N>;
+pub type InitRunnable = fn();
+pub type ProcessRunnable = fn(u32);
+pub type IdleRunnable = fn();
+pub type TaskName = &'static str;
 pub type EventMask = u32;
+type TaskList<const N: usize> = Vec<Task, N>;
 
 #[derive(Debug)]
 struct TaskCtrlBlock {
@@ -61,6 +63,32 @@ impl Task {
             },
         }
     }
+
+    pub fn has_duplicates_of(&self, other: &Self) -> bool {
+        self.name == other.name
+            || self.has_same_init_runnable_as(other)
+            || self.has_same_process_runnable_as(other)
+    }
+
+    fn has_same_init_runnable_as(&self, other: &Self) -> bool {
+        if let (Some(init_runnable), Some(other_init_runnable)) =
+            (self.init_runnable, other.init_runnable)
+        {
+            init_runnable == other_init_runnable
+        } else {
+            false
+        }
+    }
+
+    fn has_same_process_runnable_as(&self, other: &Self) -> bool {
+        if let (Some(process_runnable), Some(other_process_runnable)) =
+            (self.process_runnable, other.process_runnable)
+        {
+            process_runnable == other_process_runnable
+        } else {
+            false
+        }
+    }
 }
 
 pub struct Scheduler<const TASK_COUNT: usize, const CORE_FREQ: u32> {
@@ -77,7 +105,11 @@ impl<const TASK_COUNT: usize, const CORE_FREQ: u32> Scheduler<TASK_COUNT, CORE_F
     }
 
     pub fn add_task(&mut self, task: Task) {
-        self.task_list.push(task).unwrap();
+        #[cfg(debug_assertions)]
+        log!("Adding task {} to scheduler: \n - init runnable: {:?}\n - process runnable: {:?}\n - execution cycle: {:?}\n - execution offset: {:?}", task.name, task.init_runnable, task.process_runnable, task.execution_cycle, task.execution_offset);
+        if let Err(task) = self.task_list.push(self.panic_if_task_has_duplicates(task)) {
+            panic!("Task {} cannot be added, task list already full", task.name);
+        }
     }
 
     pub fn launch(&mut self) {
@@ -85,6 +117,7 @@ impl<const TASK_COUNT: usize, const CORE_FREQ: u32> Scheduler<TASK_COUNT, CORE_F
         systick.launch();
 
         for task in self.task_list.iter_mut() {
+            #[cfg(debug_assertions)]
             log!("Launching task {}", task.name);
 
             // Execute init_runnable if any
@@ -158,10 +191,19 @@ impl<const TASK_COUNT: usize, const CORE_FREQ: u32> Scheduler<TASK_COUNT, CORE_F
 
     #[inline]
     pub fn get_task_event(&mut self, name: &str) -> Option<u32> {
-        if let Some(task) = self.task_list.iter_mut().find(|task| task.name == name) {
+        if let Some(task) = self.task_list.iter().find(|task| task.name == name) {
             critical_section(|_| Some(task.tcb.event_monitor))
         } else {
             None
         }
+    }
+
+    fn panic_if_task_has_duplicates(&self, task: Task) -> Task {
+        for added_task in self.task_list.iter() {
+            if task.has_duplicates_of(added_task) {
+                panic!("Task {} has either same name, or init runnable: {:?} or process runnable: {:?} than already added task {}", task.name, task.init_runnable, task.process_runnable, added_task.name);
+            }
+        }
+        task
     }
 }

@@ -13,8 +13,6 @@ volatile-register = "0.2.0"
 
 [dev-dependencies]
 embedded-hal = "0.2"
-nb = "1"
-panic-halt = "0.2.0"
 stm32f4xx-hal = { version = "0.14.0", features = ["stm32f429", "usb_hs", "otg-hs"] }
 usb-device = "0.2.9"
 usbd-serial = "0.1.1"
