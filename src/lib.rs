@@ -305,4 +305,17 @@ mod tests {
         scheduler.add_task(task1);
         scheduler.add_task(task2);
     }
+
+    #[test]
+    #[should_panic]
+    fn maximum_tasks_exceeded() {
+        const TASK_COUNT: usize = 1;
+
+        let mut scheduler: Scheduler<TASK_COUNT, DUMMY_CORE_FREQ> = Scheduler::new();
+        let task1 = Task::new("Dummy task 1", None, None, None, None);
+        let task2 = Task::new("Dummy task 2", None, None, None, None);
+
+        scheduler.add_task(task1);
+        scheduler.add_task(task2);
+    }
 }
