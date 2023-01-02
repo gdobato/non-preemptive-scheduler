@@ -7,7 +7,7 @@
 #[cfg(not(feature = "core"))]
 compile_error!(
     "Core architecture feature not selected, select one of the following:
-        arm-cm
+        armvx-m
 "
 );
 

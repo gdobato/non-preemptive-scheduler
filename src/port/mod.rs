@@ -1,12 +1,12 @@
-#[cfg(feature = "arm-cm")]
-pub mod arm_cm;
-#[cfg(feature = "arm-cm")]
+#[cfg(feature = "armvx-m")]
+pub mod armvx_m;
+#[cfg(feature = "armvx-m")]
 pub use cortex_m::interrupt::free as critical_section;
-#[cfg(feature = "arm-cm")]
+#[cfg(feature = "armvx-m")]
 pub type Mutex<T> = cortex_m::interrupt::Mutex<T>;
-#[cfg(feature = "arm-cm")]
-pub type SysTick = arm_cm::SysTick;
-#[cfg(feature = "arm-cm")]
+#[cfg(feature = "armvx-m")]
+pub type SysTick = armvx_m::SysTick;
+#[cfg(feature = "armvx-m")]
 pub use rtt_target::rprintln as log;
 #[cfg(feature = "x86-64")]
 mod x86_64;
