@@ -18,8 +18,8 @@ usb-device = "0.2.9"
 usbd-serial = "0.1.1"
 
 [features]
-default = ["arm-cm"]
+default = ["armvx-m"]
 core = []
-arm-cm = ["core"]
+armvx-m = ["core"]
 risc-v = ["core"]
 x86-64 = ["core"]
