@@ -25,17 +25,17 @@ cargo install cargo-embed
 ### Build
 
 ```
-cargo build [--release] --example <example_name>
+cargo build [--release] --example <example_name> --features="panic"
 ```
 e.g :
 ```
-cargo build --example led_blinky
+cargo build --example led_blinky --features="panic"
 ```
 ### Flash on target
 ```
-cargo embed [--release] --example <example_name>
+cargo embed [--release] --example <example_name> --features="panic"
 ```
 e.g :
 ```
-cargo embed --example led_blinky
+cargo embed --example led_blinky --features="panic"
 ```

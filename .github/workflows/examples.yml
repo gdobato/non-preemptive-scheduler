@@ -20,8 +20,8 @@ jobs:
       run: cargo update
     - name: Release
       run: | 
-        cargo build --examples --release --verbose
+        cargo build --examples --features="panic" --release --verbose
     - name: Debug
       run: | 
-        cargo build --examples --verbose
+        cargo build --examples --features="panic" --verbose
         
