@@ -1,4 +1,4 @@
-//! Abstractions for x86_64
+//! Abstractions for x86
 
 use std::marker::PhantomData;
 
@@ -41,4 +41,17 @@ where
     F: FnOnce(CriticalSection) -> R,
 {
     f(CriticalSection {})
+}
+
+#[cfg(feature = "panic")]
+pub mod panic {
+    use println as log;
+    #[inline(never)]
+    #[panic_handler]
+    #[allow(unused_variables)]
+    fn panic(info: &PanicInfo) -> ! {
+        #[cfg(debug_assertions)]
+        log!("{}", info);
+        loop {}
+    }
 }

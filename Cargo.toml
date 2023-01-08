@@ -22,4 +22,24 @@ default = ["armvx-m"]
 core = []
 armvx-m = ["core"]
 risc-v = ["core"]
-x86-64 = ["core"]
+x86 = ["core"]
+panic = []
+
+[profile.dev]
+codegen-units = 1
+debug = true
+incremental = false
+
+[profile.release]
+codegen-units = 1
+debug = false
+lto = true
+opt-level = "s"
+
+[[example]]
+name = "led_blinky"
+required-features = ["panic"]
+
+[[example]]
+name = "usb_dev_cdc"
+required-features = ["panic"]

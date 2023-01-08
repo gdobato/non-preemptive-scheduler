@@ -1,12 +1,7 @@
 //! Abstractions for Arm Cortex-M
 
-use core::panic::PanicInfo;
-#[cfg(debug_assertions)]
-use cortex_m::asm::bkpt;
 use cortex_m::interrupt::free as critical_section;
 use cortex_m_rt::exception;
-#[cfg(debug_assertions)]
-use rtt_target::rprintln as log;
 use volatile_register::RW;
 
 static mut TICK: u32 = 0;
@@ -39,8 +34,6 @@ impl SysTick {
         unsafe {
             (*Self::SYST_CSR).modify(|v| v & !Self::SYST_CSR_COUNTER_ENABLE);
             (*Self::SYST_RVR).write((self.core_freq / 1_000) - 1); // 1ms
-        }
-        unsafe {
             (*Self::SYST_CSR).modify(|v| {
                 v | Self::SYST_CSR_COUNTER_ENABLE
                     | Self::SYST_CSR_TICK_INT_ENABLE
@@ -61,14 +54,22 @@ fn SysTick() {
     }
 }
 
-#[inline(never)]
-#[panic_handler]
-#[allow(unused_variables)]
-fn panic(info: &PanicInfo) -> ! {
+#[cfg(feature = "panic")]
+pub mod panic {
+    use core::panic::PanicInfo;
     #[cfg(debug_assertions)]
-    log!("{}", info);
-    loop {
+    use cortex_m::asm::bkpt;
+    #[cfg(debug_assertions)]
+    use rtt_target::rprintln as log;
+    #[inline(never)]
+    #[panic_handler]
+    #[allow(unused_variables)]
+    fn panic(info: &PanicInfo) -> ! {
         #[cfg(debug_assertions)]
-        bkpt();
+        log!("{}", info);
+        loop {
+            #[cfg(debug_assertions)]
+            bkpt();
+        }
     }
 }
