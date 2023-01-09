@@ -9,6 +9,9 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+        matrix:
+          targets: [ led_blinky, usb_dev_cdc ]
     steps:
     - uses: actions/checkout@v3
     - uses: actions-rs/toolchain@v1
@@ -17,11 +20,15 @@ jobs:
         target: thumbv7em-none-eabihf
         override: true
     - name: Prologue
-      run: cargo update
-    - name: Release
-      run: | 
-        cargo build --examples --features="panic" --release --verbose
-    - name: Debug
-      run: | 
-        cargo build --examples --features="panic" --verbose
-        
+      run: |
+        cargo update
+        cargo install cargo-binutils
+        rustup component add llvm-tools-preview
+    - name: Build ${{ matrix.targets }} - Release
+      run: |
+        cargo size --example ${{ matrix.targets }} --features="panic" --release
+        ls target/thumbv7em-none-eabihf/release/examples/${{ matrix.targets }}
+    - name: Build ${{ matrix.targets }} - Debug
+      run: |
+        cargo size --example ${{ matrix.targets }} --features="panic"
+        ls target/thumbv7em-none-eabihf/debug/examples/${{ matrix.targets }}
